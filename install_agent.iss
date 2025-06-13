@@ -30,11 +30,4 @@ Filename: "{app}\agent.exe"; \
   Description: "Lancer l’agent de monitoring maintenant"; \
   Flags: nowait postinstall runascurrentuser
 
-[Code]
-procedure CurStepChanged(CurStep: TSetupStep);
-begin
-  if CurStep = ssPostInstall then
-  begin
-    MsgBox('Installation terminée ! L’agent est lancé et démarrera automatiquement via une tâche planifiée.', mbInformation, MB_OK);
-  end;
-end;
+
