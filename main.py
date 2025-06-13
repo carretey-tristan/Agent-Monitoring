@@ -1,4 +1,4 @@
-"""
+""" 
 Agent de monitoring système - Script principal
 ----------------------------------------------
 Ce script constitue le cœur d'un agent Windows qui surveille les performances système (CPU, RAM, disque, mises à jour, trafic réseau, etc.)
@@ -159,36 +159,46 @@ def get_password_from_user() -> str:
     root.destroy()
     sys.exit(1)
 
-def store_password_registry(password: str):
-    """Stocke le hash du mot de passe dans le registre Windows de manière sécurisée"""
+def get_password_from_registry() -> str | None:
+    """Lit et déchiffre le mot de passe depuis le registre"""
     try:
         import winreg
-        
-        # Créer un hash du mot de passe avec salt basé sur l'ID machine
-        machine_id = get_machine_fingerprint()
-        salt = hashlib.sha256(machine_id.encode()).digest()
-        password_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)
-        
-        # Stocker dans le registre (HKEY_LOCAL_MACHINE pour les services système)
-        key_path = r"SOFTWARE\MonitoringAgent"
-        
-        try:
-            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_WRITE)
-        except FileNotFoundError:
-            key = winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE, key_path)
-        
-        # Encoder le hash pour le stockage
-        encoded_hash = base64.b64encode(password_hash).decode()
-        winreg.SetValueEx(key, "AuthToken", 0, winreg.REG_SZ, encoded_hash)
-        winreg.SetValueEx(key, "Initialized", 0, winreg.REG_DWORD, 1)
-        winreg.CloseKey(key)
-        
-        logger.info("Authentification stockée de manière sécurisée dans le registre")
-        return True
-        
+        key = generate_machine_based_key()
+        fernet = Fernet(key)
+
+        reg_key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\MonitoringAgent", 0, winreg.KEY_READ)
+        encrypted_pwd_b64, _ = winreg.QueryValueEx(reg_key, "EncryptedPassword")
+        winreg.CloseKey(reg_key)
+
+        return fernet.decrypt(encrypted_pwd_b64.encode()).decode()
     except Exception as e:
-        logger.error(f"Erreur lors du stockage sécurisé : {e}")
+        logger.warning(f"Impossible de récupérer ou déchiffrer le mot de passe : {e}")
+        return None
+
+def store_password_registry(password: str):
+    """Chiffre et stocke le mot de passe avec clé machine dans le registre"""
+    try:
+        import winreg
+        key = generate_machine_based_key()
+        fernet = Fernet(key)
+        encrypted_pwd = fernet.encrypt(password.encode())
+
+        key_path = r"SOFTWARE\MonitoringAgent"
+        try:
+            reg_key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_WRITE)
+        except FileNotFoundError:
+            reg_key = winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE, key_path)
+
+        winreg.SetValueEx(reg_key, "EncryptedPassword", 0, winreg.REG_SZ, encrypted_pwd.decode())
+        winreg.SetValueEx(reg_key, "Initialized", 0, winreg.REG_DWORD, 1)
+        winreg.CloseKey(reg_key)
+
+        logger.info("Mot de passe chiffré stocké dans le registre.")
+        return True
+    except Exception as e:
+        logger.error(f"Erreur stockage mot de passe chiffré : {e}")
         return False
+
 
 def get_machine_fingerprint() -> str:
     """Génère une empreinte unique de la machine pour le salt"""
@@ -208,6 +218,11 @@ def get_machine_fingerprint() -> str:
     except Exception:
         # Fallback si WMIC ne fonctionne pas
         return f"{platform.node()}-{platform.machine()}-{os.environ.get('COMPUTERNAME', 'unknown')}"
+
+def generate_machine_based_key() -> bytes:
+    fingerprint = get_machine_fingerprint()
+    return base64.urlsafe_b64encode(hashlib.sha256(fingerprint.encode()).digest())
+
 
 def verify_stored_password(password: str) -> bool:
     """Vérifie le mot de passe contre le hash stocké dans le registre"""
@@ -251,32 +266,25 @@ def is_first_run() -> bool:
         return True
 
 def get_or_request_password() -> str:
-    """Gère la logique du mot de passe (premier lancement ou vérification)"""
     if is_first_run():
-        logger.info("Premier lancement détecté - demande du mot de passe")
+        logger.info("Premier lancement - demande du mot de passe")
         password = get_password_from_user()
-        if store_password_registry(password):
-            logger.info("Mot de passe configuré avec succès")
-            return password
-        else:
-            logger.error("Erreur lors de la configuration sécurisée - utilisation du mode dégradé")
-            return password
+        store_password_registry(password)
+        return password
+
+    password = get_password_from_registry()
+    if password and validate_password(password, CONFIG_PATH):
+        return password
+
+    logger.warning("Mot de passe du registre invalide. Demande manuelle.")
+    password = get_password_from_user()
+    if validate_password(password, CONFIG_PATH):
+        store_password_registry(password)
+        return password
     else:
-        # Pour les lancements suivants, utiliser le mot de passe par défaut
-        # ou demander s'il ne fonctionne pas
-        default_password = "e559bb3424a39d56e04456733d960020f4771e7c4eda548fbb793eba97c80ad9"
-        if validate_password(default_password, CONFIG_PATH):
-            return default_password
-        elif verify_stored_password(default_password):
-            return default_password
-        else:
-            # Si aucun mot de passe ne fonctionne, redemander
-            logger.warning("Authentification requise")
-            password = get_password_from_user()
-            # Optionnel : re-stocker si l'utilisateur a changé le mot de passe
-            if validate_password(password, CONFIG_PATH):
-                store_password_registry(password)
-            return password
+        logger.error("Échec validation après saisie utilisateur.")
+        sys.exit(1)
+
 
 def ensure_general_section(config_path):
     config_parser = configparser.ConfigParser()
