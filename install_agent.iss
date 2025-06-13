@@ -13,15 +13,19 @@ PrivilegesRequiredOverridesAllowed=dialog
 
 [Files]
 Source: "agent.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "launch_agent.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "config.ini"; DestDir: "{app}"; Flags: ignoreversion
 Source: "images\logo_monitoring.png"; DestDir: "{app}\images"; Flags: ignoreversion
 Source: "images\logo_monitoring_pause.png"; DestDir: "{app}\images"; Flags: ignoreversion
 Source: "images\logo_monitoring_broke.png"; DestDir: "{app}\images"; Flags: ignoreversion
 
-[Icons]
-Name: "{commonstartup}\Agent de Monitoring"; Filename: "{app}\agent.exe"; WorkingDir: "{app}"
-
 [Run]
+; Tâche planifiée avec .bat qui change le cwd et lance agent.exe
+Filename: "schtasks"; \
+  Parameters: "/Create /TN ""MonitoringAgent"" /TR ""\""{app}\launch_agent.bat\"""" /SC ONLOGON /RL HIGHEST /F"; \
+  Flags: runhidden runascurrentuser
+
+; Lancer agent.exe immédiatement après l'installation (pour test)
 Filename: "{app}\agent.exe"; \
   Description: "Lancer l’agent de monitoring maintenant"; \
   Flags: nowait postinstall runascurrentuser
@@ -31,6 +35,6 @@ procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
-    MsgBox('Installation terminée ! L’agent est lancé et démarrera automatiquement via un raccourci.', mbInformation, MB_OK);
+    MsgBox('Installation terminée ! L’agent est lancé et démarrera automatiquement via une tâche planifiée.', mbInformation, MB_OK);
   end;
 end;
