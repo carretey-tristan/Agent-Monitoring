@@ -9,6 +9,10 @@ Utilise PowerShell via `subprocess` pour accéder au COM Microsoft.Update.Sessio
 
 import subprocess
 import winreg
+import time
+
+_last_check = 0
+_last_result = {}
 
 def is_reboot_required():
     """
@@ -34,6 +38,11 @@ def get_data():
                                       ou -1 si redémarrage requis sans mises à jour restantes
             - error (str, optionnel) : Message d'erreur en cas de problème
     """
+    global _last_check, _last_result
+    now = time.time()
+    if now - _last_check < 1800:  # 30 minutes
+        return _last_result
+
     try:
         result = subprocess.run(
             ["powershell", "-Command", """
@@ -44,7 +53,7 @@ def get_data():
             """],
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=120,
             creationflags=subprocess.CREATE_NO_WINDOW
         )
         output = result.stdout.strip()
@@ -53,7 +62,11 @@ def get_data():
         if count <0 and is_reboot_required():
             return {"pending_updates": -1}
         else:
-            return {"pending_updates": count}
+            result = {"pending_updates": count}
+            
+    except Exception:
+        result = {"error": "Windows Update check failed (timeout or COM issue)"}
 
-    except Exception as e:
-        return {"error": f"Windows Update check failed: {str(e)}"}
+    _last_check = now
+    _last_result = result
+    return result
