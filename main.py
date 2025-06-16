@@ -473,12 +473,27 @@ def on_quit(icon_obj, item):
     icon_obj.stop()
     os._exit(0)
 
+def on_edit_config(icon_obj, item):
+    try:
+        os.startfile(CONFIG_PATH)
+        logger.info("Ouverture du fichier de configuration.")
+    except Exception as e:
+        logger.error(f"Impossible d'ouvrir config.ini : {e}")
+
+def on_restart(icon_obj, item):
+    logger.info("Redémarrage manuel de l'agent...")
+    icon_obj.stop()
+    python = sys.executable
+    os.execl(python, python, *sys.argv)
+
 def setup_tray():
     global icon
     image = Image.open(ICON_PATHS["running"])
     icon = Icon("agent_monitoring", image, "Agent de Monitoring", menu=Menu(
         MenuItem("⏯ Démarrer / Pause", on_toggle_run),
         MenuItem("📂 Ouvrir le fichier log", on_open_log),
+        MenuItem("🛠 Modifier le fichier config", on_edit_config),
+        MenuItem("🔄 Redémarrer l'agent", on_restart),
         MenuItem("❌ Quitter", on_quit)
     ))
     icon.run()
