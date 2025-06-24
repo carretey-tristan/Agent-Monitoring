@@ -24,15 +24,20 @@ def get_data():
         uname = platform.uname()
         
         # Extraction du build number (3e élément de la release)
-        release_parts = uname.version.split(".")
-        build_number = int(release_parts[2]) if len(release_parts) >= 3 and release_parts[2].isdigit() else None
-        
+        version_parts = uname.version.split(".")
+        build_number = int(version_parts[2]) if len(version_parts) >= 3 and version_parts[2].isdigit() else None
+        release = uname.release.replace("server", "").strip()
         return {
             "hostname": socket.gethostname(),
             "uptime_minutes": uptime.total_seconds() // 60,
+            "release": int(release),
             "version": uname.version,               
             "build_number": build_number            
         }
 
     except Exception as e:
         return {"error": f"Error in system_info: {str(e)}"}
+
+# Test
+if __name__ == "__main__":
+    print(get_data())

@@ -54,3 +54,7 @@ def get_data():
         "bytes_sent": int(sent_per_sec),
         "bytes_recv": int(recv_per_sec)
     }
+
+# Test
+if __name__ == "__main__":
+    print(get_data())

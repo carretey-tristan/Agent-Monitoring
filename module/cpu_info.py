@@ -24,3 +24,7 @@ def get_data():
         }
     except Exception as e:
         return {"error": f"Error in cpu_info: {str(e)}"} 
+    
+# Test
+if __name__ == "__main__":
+    print(get_data())

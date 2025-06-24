@@ -2,8 +2,7 @@
 
 ## 📌 Description
 
-L'**Agent de Monitoring Système** est une application Python conçue pour surveiller en temps réel les performances d'un poste **Windows**.  
-Elle collecte plusieurs types de **métriques système** (CPU, RAM, disque, réseau, mises à jour Windows) et les transmet de façon sécurisée à une base **InfluxDB**.  
+L'**Agent de Monitoring Système** est une application Python conçue pour surveiller en temps réel les performances d'un poste **Windows**. Elle collecte plusieurs types de **métriques système** (CPU, RAM, disque, réseau, mises à jour Windows, uptime, ID AnyDesk) et les transmet de façon sécurisée à une base **InfluxDB**. 
 
 Une **interface graphique** discrète dans la barre des tâches (systray) permet de **contrôler l'agent** : démarrer, mettre en pause, consulter les logs, modifier la configuration ou quitter l'application.
 
@@ -13,24 +12,19 @@ Une **interface graphique** discrète dans la barre des tâches (systray) permet
 
 ### 📊 Collecte automatique de métriques
 
-- Utilisation **CPU**, **RAM** et **disque**
-- Activité **réseau**
-- **Mises à jour Windows** disponibles
-  - Détection des mises à jour logicielles non installées
-  - Détection des redémarrages requis
-  - Mise en cache des résultats (30 minutes)
-  - Gestion des timeouts et erreurs COM
-  - Valeur spéciale (-1) pour indiquer un redémarrage requis
-- Informations système générales (nom de la machine, système, architecture…)
-- **ID AnyDesk** pour identification rapide
+- Utilisation **CPU** (pourcentage global)
+- Utilisation **RAM** (total, libre, pourcentage)
+- Utilisation **disque** (par lettre, total, libre, pourcentage)
+- Activité **réseau** (débit envoyé/reçu par seconde)
+- **Mises à jour Windows** disponibles (nombre, détection redémarrage requis)
+- Informations système générales (nom de la machine, uptime, version Windows, build)
+- **ID AnyDesk** pour identification et prise en main à distance
 
 ### ☁️ Transmission sécurisée à InfluxDB
 
-- Envoi des métriques via **API InfluxDB**
-- Ajout de **tags personnalisés** (nom de l'hôte, entreprise…)
-- Gestion des erreurs de transmission
-- Pas d'envoi des données d'erreur à InfluxDB
-- Gestion des timeouts de connexion (10 secondes)
+- Envoi des métriques via **API InfluxDB** (token, org, bucket chiffrés)
+- Ajout de **tags personnalisés** (nom de l'hôte, entreprise)
+- Gestion des erreurs de transmission et des timeouts
 - Vérification des erreurs par module avant envoi
 
 ### 🖱️ Interface utilisateur (systray)
@@ -40,23 +34,21 @@ Une **interface graphique** discrète dans la barre des tâches (systray) permet
 - 🛠️ **Modifier la configuration**
 - 🔄 **Redémarrer l'agent**
 - ❌ **Quitter l'agent**
+- Icône dynamique selon l'état (actif, pause, erreur)
 
 ### 🔐 Sécurité renforcée
 
 - Données sensibles (URL, token, etc.) **protégées via Fernet** (cryptographie symétrique)
-- Stockage sécurisé du mot de passe dans le registre Windows
+- Stockage sécurisé du mot de passe dans le registre Windows (lié à l'empreinte machine)
 - Validation du mot de passe au démarrage
 - Protection contre les accès non autorisés
-- Gestion du premier lancement avec demande de mot de passe
-- Interface graphique pour la configuration initiale
+- Gestion du premier lancement avec demande de mot de passe et configuration assistée (nom, entreprise, disques)
 
 ### 📝 Journalisation avancée
 
-- Système de logs avec rotation automatique
-- Format standardisé : `[YYYY-MM-DD HH:MM:SS] Message`
+- Système de logs avec rotation automatique (5MB, 10 fichiers)
+- Format standardisé : `[YYYY-MM-DD HH:MM:SS] [NIVEAU] Message`
 - Niveaux de log : INFO, WARNING, ERROR
-- Limite de taille des fichiers de log (5MB)
-- Conservation des 10 derniers fichiers de log
 - Filtrage anti-flood des messages répétitifs
 - Nettoyage des messages d'erreur pour plus de clarté
 - Journalisation des erreurs par module
@@ -97,27 +89,26 @@ pip install -r requirements.txt
 
 ```
 monitoring-agent/
-├── main.py                         # Script principal
-├── config.ini                      # Configuration (à créer)
-├── config.ini.example              # Exemple de configuration
-├── chiffre.py                      # Outil de chiffrement
+├── main.py                         # Script principal (collecte, chiffrement, systray, logs)
+├── config.ini                      # Configuration (chiffrée)
+├── chiffre.py                      # Outil de chiffrement Fernet
 ├── requirements.txt                # Dépendances Python
 ├── README.md                       # Documentation
 ├── images/                         # Icônes pour la systray
 │   ├── logo_monitoring.png
 │   ├── logo_monitoring_pause.png
 │   └── logo_monitoring_broke.png
-├── logs/                          # Dossier des logs
+├── logs/                           # Dossier des logs
 │   └── agent.log
-└── module/                         # Modules spécialisés
+└── module/                         # Modules spécialisés (collecte des métriques)
     ├── __init__.py
-    ├── system_info.py             # Informations système
-    ├── cpu_info.py                # Métriques CPU
-    ├── ram_info.py                # Utilisation mémoire
-    ├── disk_info.py               # Espace disque
-    ├── network_info.py            # Trafic réseau
-    ├── windows_update.py          # Mises à jour Windows
-    └── anydesk_id.py              # ID AnyDesk
+    ├── system_info.py              # Nom, uptime, version, build Windows
+    ├── cpu_info.py                 # Utilisation CPU
+    ├── ram_info.py                 # Utilisation mémoire
+    ├── disk_info.py                # Espace disque (par lettre)
+    ├── network_info.py             # Trafic réseau (débit)
+    ├── windows_update.py           # Mises à jour Windows (nombre, reboot)
+    └── anydesk_id.py               # ID AnyDesk
 ```
 
 ---
@@ -127,19 +118,19 @@ monitoring-agent/
 ### 1️⃣ Configuration initiale
 
 **Premier lancement** :
-- Saisir le mot de passe de chiffrement
-- Configurer le nom de la machine
-- Définir l'entreprise
-- Sélectionner les chemins de disque à surveiller
+- Saisir le mot de passe de chiffrement (3 essais)
+- Configuration assistée : nom de la machine, entreprise, sélection des disques à surveiller (interface graphique)
+- Le mot de passe est chiffré et stocké dans le registre Windows, lié à l'empreinte matérielle
 
-**Configuration du fichier** `config.ini` :
+**Configuration du fichier** `config.ini` (exemple) :
 
 ```ini
 [general]
-
+name = ...
+company = ...
 
 [disk]
-
+paths = ["C:\\", "D:\\"]
 
 [influxdb]
 url = https://influxdb.example.com
@@ -177,7 +168,7 @@ Une icône apparaîtra dans la **barre des tâches**.
 
 ### Étapes à suivre
 
-1. **Créez** un fichier `new_metric.py`
+1. **Créez** un fichier `new_metric.py` dans le dossier `module/`
 2. **Implémentez** la fonction suivante :
 
 ```python
@@ -188,10 +179,9 @@ def get_data():
 3. **Intégrez-la** dans `main.py` :
 
 ```python
-import new_metric
-
-# Dans la collecte des données
-"new_metric": new_metric.get_data(),
+import module.new_metric
+# ...
+"new_metric": module.new_metric.get_data(),
 ```
 
 ---
@@ -207,12 +197,14 @@ import new_metric
 
 ---
 
-## 📝 Remarques
+## 📝 Notes complémentaires
 
-> ⚠️ **En cas de problème**, consultez le fichier `logs/agent.log`  
-> 🔍 **Vérifiez** que toutes les dépendances sont bien installées  
-> 🛠️ **Ce projet** peut être adapté à d'autres systèmes ou bases de données avec quelques modifications  
-> 🔐 **Sécurité** : Le mot de passe est stocké de manière sécurisée dans le registre Windows
+- L'agent gère automatiquement la rotation des logs et la reprise après erreur.
+- Le code AnyDesk est extrait automatiquement pour faciliter l'assistance à distance.
+- La configuration initiale est guidée pour éviter les oublis (nom, entreprise, disques).
+- Le chiffrement Fernet protège toutes les informations sensibles du fichier de configuration.
+- L'empreinte machine (UUID, nom, architecture) est utilisée pour lier le mot de passe au poste.
+- L'agent est compatible avec une installation automatique via Inno Setup (non inclus ici).
 
 ---
 

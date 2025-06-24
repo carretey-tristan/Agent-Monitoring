@@ -70,3 +70,7 @@ def get_data():
     _last_check = now
     _last_result = result
     return result
+
+# Test
+if __name__ == "__main__":
+    print(get_data())

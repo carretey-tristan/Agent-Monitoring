@@ -19,13 +19,20 @@ import threading
 import base64
 import hashlib
 import tkinter as tk
-from tkinter import simpledialog, messagebox
 import psutil
+import unicodedata
+import logging
+import re
 
 from PIL import Image
 from datetime import datetime, timezone
 from influxdb_client import InfluxDBClient, Point
+from tkinter import simpledialog, messagebox
 from influxdb_client.client.write_api import SYNCHRONOUS
+from logging.handlers import RotatingFileHandler
+from cryptography.fernet import Fernet
+from pystray import Icon, MenuItem, Menu
+
 import module.system_info
 import module.cpu_info
 import module.ram_info
@@ -33,12 +40,6 @@ import module.disk_info
 import module.windows_update
 import module.network_info
 import module.anydesk_id
-import logging
-import re
-from logging.handlers import RotatingFileHandler
-from cryptography.fernet import Fernet
-from pystray import Icon, MenuItem, Menu
-
 
 # === LOGGING AVANCÉ === #
 def clean_error_message(msg):
@@ -304,12 +305,20 @@ def ensure_general_section(config_path):
         root.withdraw()
 
         if not name:
-            name = simpledialog.askstring("Nom de la machine", "Entrez le nom personnalisé de ce PC :")
+            name = simpledialog.askstring("Nom de la machine", "Entrez un nom personnalisé (ex:SRV-AD-SOGEIC)")
+            name = name.upper()
+            name = ''.join(
+                c for c in unicodedata.normalize('NFD', name) if unicodedata.category(c) != 'Mn'
+            )
             if name:
                 config_parser["general"]["name"] = name
 
         if not company:
             company = simpledialog.askstring("Entreprise", "Entrez le nom de l'entreprise :")
+            company = company.upper()
+            company = ''.join(
+                c for c in unicodedata.normalize('NFD', company) if unicodedata.category(c) != 'Mn'
+            )
             if company:
                 config_parser["general"]["company"] = company
 
@@ -423,28 +432,43 @@ def collect_all_data():
         return {"error": f"Data collection failed: {str(e)}"}
 
 def send_to_influx(data):
-    config_name = config["general"].get("name", "").strip()
-    hostname = config_name if config_name else data["system"].get("hostname", "unknown")
+    hostname = config["general"].get("name", "").strip()
     company = config["general"].get("company", "unknown")
 
     measurement = "pc"
     records = []
 
-    for metric in ["system", "cpu", "memory", "disk", "updates", "network", "anydesk"]:
-        if metric not in data:
-            continue
-        for field_name, field_value in data[metric].items():
+    for metric, content in data.items():
+        if metric == "disk" and isinstance(content, dict):
+            # Gestion spéciale : 1 point par disque avec tag 'disk'
+            for lettre, stats in content.items():
+                point = Point(measurement) \
+                    .tag("host", hostname) \
+                    .tag("company", company) \
+                    .tag("metric", "disk") \
+                    .tag("disk", lettre)
+                for k, v in stats.items():
+                    if isinstance(v, (int, float)):
+                        point = point.field(k, v)
+                records.append(point)
+
+        elif isinstance(content, dict):
+            # Autres métriques classiques (system, cpu, memory...)
             point = Point(measurement).tag("host", hostname).tag("company", company).tag("metric", metric)
-            if isinstance(field_value, (int, float)):
-                point = point.field(field_name, field_value)
-            elif isinstance(field_value, str):
-                point = point.field(field_name, field_value)
-            else:
-                continue
+            for k, v in content.items():
+                if isinstance(v, (int, float)) or isinstance(v, str):
+                    point = point.field(k, v)
+            records.append(point)
+
+        elif isinstance(content, str):
+            # Cas spécial : métrique simple en chaîne
+            point = Point(measurement).tag("host", hostname).tag("company", company).tag("metric", metric)
+            point = point.field("value", content)
             records.append(point)
 
     if records:
         write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=records)
+
 
 # === ICON DYNAMIQUE === #
 def update_icon(state):
@@ -504,7 +528,6 @@ def main_loop():
         try:
             if running:
                 data = collect_all_data()
-                print(data)
                 send_to_influx(data)
                 update_icon("running")
             else:
