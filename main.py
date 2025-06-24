@@ -305,7 +305,7 @@ def ensure_general_section(config_path):
         root.withdraw()
 
         if not name:
-            name = simpledialog.askstring("Nom de la machine", "Entrez un nom personnalisé (ex:SRV-AD-SOGEIC)")
+            name = simpledialog.askstring("Nom de la machine", "Entrez un nom personnalisé (ex:SRV-AD-COMPANY)")
             name = name.upper()
             name = ''.join(
                 c for c in unicodedata.normalize('NFD', name) if unicodedata.category(c) != 'Mn'
