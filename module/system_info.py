@@ -26,7 +26,7 @@ def get_data():
         # Extraction du build number (3e élément de la release)
         version_parts = uname.version.split(".")
         build_number = int(version_parts[2]) if len(version_parts) >= 3 and version_parts[2].isdigit() else None
-        release = uname.release.replace("server", "").strip()
+        release = uname.release.replace("Server", "").strip()
         return {
             "hostname": socket.gethostname(),
             "uptime_minutes": uptime.total_seconds() // 60,

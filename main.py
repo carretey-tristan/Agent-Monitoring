@@ -23,7 +23,10 @@ import psutil
 import unicodedata
 import logging
 import re
+import subprocess
+import ctypes, sys
 
+from ctypes import wintypes
 from PIL import Image
 from datetime import datetime, timezone
 from influxdb_client import InfluxDBClient, Point
@@ -40,6 +43,29 @@ import module.disk_info
 import module.windows_update
 import module.network_info
 import module.anydesk_id
+
+
+
+def already_running(mutex_name="Global\\MonitoringAgentMutex"):
+    """
+    Crée un mutex global Windows.
+    Retourne True si une instance existe déjà.
+    """
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    CreateMutexW = kernel32.CreateMutexW
+    CreateMutexW.argtypes = [
+        wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR
+    ]
+    CreateMutexW.restype = wintypes.HANDLE
+
+    ERROR_ALREADY_EXISTS = 183
+    handle = CreateMutexW(None, False, mutex_name)
+    return bool(ctypes.get_last_error() == ERROR_ALREADY_EXISTS)
+
+# ── À placer tout en haut du script (avant toute UI) ──
+if already_running():
+    # Une instance tourne déjà : on sort sans erreur
+    sys.exit(0)
 
 # === LOGGING AVANCÉ === #
 def clean_error_message(msg):
@@ -177,7 +203,7 @@ def get_password_from_registry() -> str | None:
         return None
 
 def store_password_registry(password: str):
-    """Chiffre et stocke le mot de passe avec clé machine dans le registre"""
+    """Chiffre et stocke le mot de passe, puis verrouille la clé registre."""
     try:
         import winreg
         key = generate_machine_based_key()
@@ -191,15 +217,41 @@ def store_password_registry(password: str):
             reg_key = winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE, key_path)
 
         winreg.SetValueEx(reg_key, "EncryptedPassword", 0, winreg.REG_SZ, encrypted_pwd.decode())
-        winreg.SetValueEx(reg_key, "Initialized", 0, winreg.REG_DWORD, 1)
+        winreg.SetValueEx(reg_key, "Initialized",     0, winreg.REG_DWORD, 1)
         winreg.CloseKey(reg_key)
+
+        set_registry_acl()  
 
         logger.info("Mot de passe chiffré stocké dans le registre.")
         return True
+
     except Exception as e:
         logger.error(f"Erreur stockage mot de passe chiffré : {e}")
         return False
 
+    
+def set_registry_acl() -> None:
+    """
+    Restreint l’accès à HKLM\SOFTWARE\MonitoringAgent :
+    - Supprime l’héritage
+    - Accorde Full Control à SYSTEM et Administrators uniquement
+    """
+    try:
+        cmd = [
+            "icacls",
+            r"HKLM\SOFTWARE\MonitoringAgent",
+            "/inheritance:r",
+            "/grant", "SYSTEM:F",
+            "/grant", "Administrators:F"
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+
+        if result.returncode != 0:
+            logger.error(f"Erreur icacls ({result.returncode}) : {result.stderr.strip()}")
+        else:
+            logger.info("ACL du registre restreintes à SYSTEM et Administrators.")
+    except Exception as e:
+        logger.error(f"Exception lors de la mise à jour des ACL : {e}")
 
 def get_machine_fingerprint() -> str:
     """Génère une empreinte unique de la machine pour le salt"""
@@ -305,7 +357,7 @@ def ensure_general_section(config_path):
         root.withdraw()
 
         if not name:
-            name = simpledialog.askstring("Nom de la machine", "Entrez un nom personnalisé (ex:SRV-AD-COMPANY)")
+            name = simpledialog.askstring("Nom de la machine", "Entrez un nom personnalisé (ex:SRV-AD-{NOM_ENTREPRISE})")
             name = name.upper()
             name = ''.join(
                 c for c in unicodedata.normalize('NFD', name) if unicodedata.category(c) != 'Mn'
@@ -505,10 +557,25 @@ def on_edit_config(icon_obj, item):
         logger.error(f"Impossible d'ouvrir config.ini : {e}")
 
 def on_restart(icon_obj, item):
-    logger.info("Redémarrage manuel de l'agent...")
-    icon_obj.stop()
-    python = sys.executable
-    os.execl(python, python, *sys.argv)
+    """Redémarre l’agent en relançant launch_agent.bat, sans nouvelle import."""
+    logger.info("Redémarrage manuel de l'agent…")
+    icon_obj.stop()                                   # ferme l'UI actuelle
+
+    # Chemin absolu vers launch_agent.bat (même dossier que agent.exe)
+    batch_path = os.path.join(os.path.dirname(sys.argv[0]), "launch_agent.bat")
+
+    try:
+        # Lance le batch sans fenêtre console
+        subprocess.Popen(
+            ["cmd", "/c", batch_path],
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+        logger.info("Batch de redémarrage lancé : %s", batch_path)
+    except Exception as e:
+        logger.error("Échec lancement batch : %s", e)
+
+    sys.exit(0)                                       # termine ce processus
+
 
 def setup_tray():
     global icon

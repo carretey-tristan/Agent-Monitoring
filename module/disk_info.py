@@ -29,13 +29,11 @@ def get_data():
         config.read('config.ini')
         
         # Chargement des chemins depuis la config
-        disk_paths = json.loads(config.get('disk', 'paths', fallback='["C:\\\\", "D:\\\\"]'))
-        disk_paths = ["C:\\", "D:\\"]
-
+        disk_paths = json.loads(config.get('disk', 'paths', fallback='["C:\\\\"'))
         data = {}
         for path in disk_paths:
             try:
-                lettre = path[0].lower()
+                lettre = path[0].upper()
                 disk = psutil.disk_usage(path)
                 data[lettre] = {
                     "percent": disk.percent,
