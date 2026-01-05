@@ -20,12 +20,17 @@ Source: "images\logo_monitoring_pause.png"; DestDir: "{app}\images"; Flags: igno
 Source: "images\logo_monitoring_broke.png"; DestDir: "{app}\images"; Flags: ignoreversion
 
 [Run]
-; Tâche planifiée avec .bat qui change le cwd et lance agent.exe
-Filename: "schtasks"; \
+; Tâche 1 : Lance l’agent au DÉMARRAGE (SYSTEM, pas de systray)
+Filename: "schtasks.exe"; \
+  Parameters: "/Create /TN ""MonitoringAgent-System"" /TR ""\""{app}\launch_agent.bat\"""" /SC ONSTART /RU SYSTEM /RL HIGHEST /F"; \
+  Flags: runhidden
+
+; Tâche 2 : Lance l’agent à la CONNEXION (admin interactif, avec systray)
+Filename: "schtasks.exe"; \
   Parameters: "/Create /TN ""MonitoringAgent"" /TR ""\""{app}\launch_agent.bat\"""" /SC ONLOGON /RL HIGHEST /F"; \
   Flags: runhidden runascurrentuser
 
-; Lancer agent.exe immédiatement après l'installation (pour test)
+; Lancer agent.exe immédiatement après l'installation 
 Filename: "{app}\agent.exe"; \
   Description: "Lancer l’agent de monitoring maintenant"; \
   Flags: nowait postinstall runascurrentuser
