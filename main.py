@@ -1,13 +1,8 @@
 """ 
-Agent de monitoring système - Script principal
+Agent de monitoring système - Script principal (Optimisé pour Grafana)
 ----------------------------------------------
-Ce script constitue le cœur d'un agent Windows qui surveille les performances système (CPU, RAM, disque, mises à jour, trafic réseau, etc.)
-- Il lit une configuration chiffrée, l'interprète et s'assure qu'un nom de machine et une entreprise soient définis.
-- Il collecte des métriques à intervalles réguliers et les envoie dans InfluxDB.
-- Il fournit une icône en barre de tâche (systray) pour démarrer/mettre en pause/lancer les logs/fermer.
-
-Technologies utilisées :
-- psutil, cryptography, pystray, tkinter, InfluxDB Client
+Ce script surveille les performances système et envoie les données à InfluxDB
+avec une structure de données optimisée (Mesures distinctes).
 """
 
 import os
@@ -24,7 +19,7 @@ import unicodedata
 import logging
 import re
 import subprocess
-import ctypes, sys
+import ctypes
 
 from ctypes import wintypes
 from PIL import Image
@@ -36,6 +31,7 @@ from logging.handlers import RotatingFileHandler
 from cryptography.fernet import Fernet
 from pystray import Icon, MenuItem, Menu
 
+# Import des modules (Assurez-vous que le dossier 'module' contient les __init__.py et fichiers nécessaires)
 import module.system_info
 import module.cpu_info
 import module.ram_info
@@ -43,7 +39,6 @@ import module.disk_info
 import module.windows_update
 import module.network_info
 import module.anydesk_id
-
 
 
 def already_running(mutex_name="Global\\MonitoringAgentMutex"):
@@ -64,7 +59,6 @@ def already_running(mutex_name="Global\\MonitoringAgentMutex"):
 
 # ── À placer tout en haut du script (avant toute UI) ──
 if already_running():
-    # Une instance tourne déjà : on sort sans erreur
     sys.exit(0)
 
 # === LOGGING AVANCÉ === #
@@ -128,34 +122,30 @@ def decrypt_ini(file_path: str, key: bytes):
     return config
 
 def validate_password(password: str, config_path: str) -> bool:
-    """Valide le mot de passe en tentant de déchiffrer le fichier de configuration"""
     try:
         key = generate_key(password)
         config = configparser.ConfigParser()
         config.read(config_path)
         
-        # Vérifier s'il y a des sections chiffrées
         encrypted_sections = []
         for section in config.sections():
             if section not in ["general", "disk", "auth"]:
                 encrypted_sections.append(section)
         
         if not encrypted_sections:
-            return True  # Pas de sections chiffrées, mot de passe accepté
+            return True
         
-        # Tenter de déchiffrer une section pour valider le mot de passe
         fernet = Fernet(key)
         test_section = encrypted_sections[0]
         for option in config[test_section]:
             fernet.decrypt(config[test_section][option].encode()).decode()
-            break  # Si on arrive ici, le déchiffrement a réussi
+            break
         
         return True
     except Exception:
         return False
 
 def get_password_from_user() -> str:
-    """Demande le mot de passe à l'utilisateur avec validation"""
     root = tk.Tk()
     root.withdraw()
     
@@ -169,7 +159,7 @@ def get_password_from_user() -> str:
             show='*'
         )
         
-        if password is None:  # Utilisateur a annulé
+        if password is None:
             messagebox.showerror("Erreur", "Mot de passe requis pour démarrer l'agent.")
             root.destroy()
             sys.exit(1)
@@ -187,7 +177,6 @@ def get_password_from_user() -> str:
     sys.exit(1)
 
 def get_password_from_registry() -> str | None:
-    """Lit et déchiffre le mot de passe depuis le registre"""
     try:
         import winreg
         key = generate_machine_based_key()
@@ -203,7 +192,6 @@ def get_password_from_registry() -> str | None:
         return None
 
 def store_password_registry(password: str):
-    """Chiffre et stocke le mot de passe, puis verrouille la clé registre."""
     try:
         import winreg
         key = generate_machine_based_key()
@@ -217,7 +205,7 @@ def store_password_registry(password: str):
             reg_key = winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE, key_path)
 
         winreg.SetValueEx(reg_key, "EncryptedPassword", 0, winreg.REG_SZ, encrypted_pwd.decode())
-        winreg.SetValueEx(reg_key, "Initialized",     0, winreg.REG_DWORD, 1)
+        winreg.SetValueEx(reg_key, "Initialized",      0, winreg.REG_DWORD, 1)
         winreg.CloseKey(reg_key)
 
         set_registry_acl()  
@@ -231,11 +219,6 @@ def store_password_registry(password: str):
 
     
 def set_registry_acl() -> None:
-    """
-    Restreint l’accès à HKLM\SOFTWARE\MonitoringAgent :
-    - Supprime l’héritage
-    - Accorde Full Control à SYSTEM et Administrators uniquement
-    """
     try:
         cmd = [
             "icacls",
@@ -254,22 +237,18 @@ def set_registry_acl() -> None:
         logger.error(f"Exception lors de la mise à jour des ACL : {e}")
 
 def get_machine_fingerprint() -> str:
-    """Génère une empreinte unique de la machine pour le salt"""
     try:
         import subprocess
         import platform
         
-        # Récupérer l'UUID de la carte mère
         result = subprocess.run(['wmic', 'csproduct', 'get', 'uuid'], 
                               capture_output=True, text=True)
         uuid = result.stdout.split('\n')[1].strip() if result.returncode == 0 else ""
         
-        # Combinaison d'identifiants machine uniques
         fingerprint = f"{platform.node()}-{uuid}-{platform.machine()}"
         return fingerprint
         
     except Exception:
-        # Fallback si WMIC ne fonctionne pas
         return f"{platform.node()}-{platform.machine()}-{os.environ.get('COMPUTERNAME', 'unknown')}"
 
 def generate_machine_based_key() -> bytes:
@@ -278,7 +257,6 @@ def generate_machine_based_key() -> bytes:
 
 
 def verify_stored_password(password: str) -> bool:
-    """Vérifie le mot de passe contre le hash stocké dans le registre"""
     try:
         import winreg
         
@@ -290,7 +268,6 @@ def verify_stored_password(password: str) -> bool:
         
         stored_hash = base64.b64decode(stored_hash_b64)
         
-        # Recalculer le hash avec le même salt
         machine_id = get_machine_fingerprint()
         salt = hashlib.sha256(machine_id.encode()).digest()
         password_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)
@@ -301,7 +278,6 @@ def verify_stored_password(password: str) -> bool:
         return False
 
 def is_first_run() -> bool:
-    """Vérifie si c'est le premier lancement de l'agent"""
     try:
         import winreg
         
@@ -314,7 +290,7 @@ def is_first_run() -> bool:
         return initialized == 0
         
     except FileNotFoundError:
-        return True  # Clé n'existe pas = premier lancement
+        return True 
     except Exception:
         return True
 
@@ -358,7 +334,7 @@ def ensure_general_section(config_path):
 
         if not name:
             name = simpledialog.askstring("Nom de la machine", "Entrez un nom personnalisé (ex:SRV-AD-{NOM_ENTREPRISE})")
-            name = name.upper()
+            name = name.upper() if name else ""
             name = ''.join(
                 c for c in unicodedata.normalize('NFD', name) if unicodedata.category(c) != 'Mn'
             )
@@ -367,7 +343,7 @@ def ensure_general_section(config_path):
 
         if not company:
             company = simpledialog.askstring("Entreprise", "Entrez le nom de l'entreprise :")
-            company = company.upper()
+            company = company.upper() if company else ""
             company = ''.join(
                 c for c in unicodedata.normalize('NFD', company) if unicodedata.category(c) != 'Mn'
             )
@@ -473,6 +449,7 @@ def collect_all_data():
             "anydesk": module.anydesk_id.get_anydesk_id(),
         }
 
+        # Log des erreurs internes aux modules
         for module_name, values in data.items():
             if isinstance(values, dict) and "error" in values:
                 logger.error(f"Erreur dans le module {module_name} : {values['error']}")
@@ -484,43 +461,137 @@ def collect_all_data():
         return {"error": f"Data collection failed: {str(e)}"}
 
 def send_to_influx(data):
+    """
+    Envoie les données vers InfluxDB avec une structure optimisée pour Grafana.
+    Chaque type de donnée (CPU, RAM, DISK) a son propre 'Measurement'.
+    """
+    if "error" in data:
+        return
+
     hostname = config["general"].get("name", "").strip()
     company = config["general"].get("company", "unknown")
-
-    measurement = "pc"
+    
     records = []
 
-    for metric, content in data.items():
-        if metric == "disk" and isinstance(content, dict):
-            # Gestion spéciale : 1 point par disque avec tag 'disk'
-            for lettre, stats in content.items():
-                point = Point(measurement) \
-                    .tag("host", hostname) \
-                    .tag("company", company) \
-                    .tag("metric", "disk") \
-                    .tag("disk", lettre)
-                for k, v in stats.items():
-                    if isinstance(v, (int, float)):
-                        point = point.field(k, v)
-                records.append(point)
+    # 1. CPU
+    # Measurement: "cpu"
+    # Fields: percent, frequency, etc.
+    if "cpu" in data and isinstance(data["cpu"], dict):
+        p = Point("cpu")\
+            .tag("host", hostname)\
+            .tag("company", company)
+        
+        for k, v in data["cpu"].items():
+            if isinstance(v, (int, float)):
+                p = p.field(k, v)
+        records.append(p)
 
-        elif isinstance(content, dict):
-            # Autres métriques classiques (system, cpu, memory...)
-            point = Point(measurement).tag("host", hostname).tag("company", company).tag("metric", metric)
-            for k, v in content.items():
-                if isinstance(v, (int, float)) or isinstance(v, str):
-                    point = point.field(k, v)
-            records.append(point)
+    # 2. Mémoire (RAM)
+    # Measurement: "memory"
+    if "memory" in data and isinstance(data["memory"], dict):
+        p = Point("memory")\
+            .tag("host", hostname)\
+            .tag("company", company)
+        
+        for k, v in data["memory"].items():
+            if isinstance(v, (int, float)):
+                p = p.field(k, v)
+        records.append(p)
 
-        elif isinstance(content, str):
-            # Cas spécial : métrique simple en chaîne
-            point = Point(measurement).tag("host", hostname).tag("company", company).tag("metric", metric)
-            point = point.field("value", content)
-            records.append(point)
+    # 3. Disques & Partitions
+    # Measurement: "disk" (pour l'espace) et "diskio" (pour la performance)
+    if "disk" in data and isinstance(data["disk"], dict):
+        for disk_name, disk_content in data["disk"].items():
+            if not isinstance(disk_content, dict):
+                continue
 
+            # A. Performance IO (au niveau du disque physique)
+            # On cherche les champs numériques directs (read_bytes, write_bytes, etc.)
+            io_fields = {k: v for k, v in disk_content.items() if isinstance(v, (int, float))}
+            if io_fields:
+                p_io = Point("diskio")\
+                    .tag("host", hostname)\
+                    .tag("company", company)\
+                    .tag("device", disk_name) # ex: PhysicalDrive0
+                
+                for k, v in io_fields.items():
+                    p_io = p_io.field(k, v)
+                records.append(p_io)
+
+            # B. Partitions (Espace disque)
+            # On cherche les sous-dictionnaires (ex: "C:", "D:")
+            for sub_key, sub_val in disk_content.items():
+                if isinstance(sub_val, dict):
+                    # sub_key est le point de montage (ex: "C")
+                    p_part = Point("disk")\
+                        .tag("host", hostname)\
+                        .tag("company", company)\
+                        .tag("device", disk_name)\
+                        .tag("mountpoint", sub_key)
+                    
+                    has_fields = False
+                    for k, v in sub_val.items():
+                        if isinstance(v, (int, float)):
+                            p_part = p_part.field(k, v)
+                            has_fields = True
+                    
+                    if has_fields:
+                        records.append(p_part)
+
+    # 4. Réseau
+    # Measurement: "network"
+    if "network" in data and isinstance(data["network"], dict):
+        p = Point("network")\
+            .tag("host", hostname)\
+            .tag("company", company)
+        
+        for k, v in data["network"].items():
+            if isinstance(v, (int, float)):
+                p = p.field(k, v)
+        records.append(p)
+
+    # 5. Mises à jour Windows
+    # Measurement: "updates"
+    if "updates" in data and isinstance(data["updates"], dict):
+        p = Point("updates")\
+            .tag("host", hostname)\
+            .tag("company", company)
+        
+        has_fields = False
+        for k, v in data["updates"].items():
+            # On accepte int/float et booleens convertis en int
+            if isinstance(v, (int, float)):
+                p = p.field(k, v)
+                has_fields = True
+            elif isinstance(v, bool):
+                p = p.field(k, int(v))
+                has_fields = True
+        
+        if has_fields:
+            records.append(p)
+
+    # 6. Système (Info générales + Uptime)
+    # Measurement: "system"
+    if "system" in data and isinstance(data["system"], dict):
+        p = Point("system")\
+            .tag("host", hostname)\
+            .tag("company", company)
+        
+        # On ajoute AnyDesk ici si disponible
+        if "anydesk" in data and data["anydesk"]:
+             p = p.field("anydesk_id", str(data["anydesk"]))
+
+        for k, v in data["system"].items():
+            if isinstance(v, (int, float, str, bool)):
+                p = p.field(k, v)
+        records.append(p)
+
+    # Envoi global
     if records:
-        write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=records)
-
+        try:
+            write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=records)
+        except Exception as e:
+            logger.error(f"Erreur lors de l'envoi InfluxDB: {e}")
 
 # === ICON DYNAMIQUE === #
 def update_icon(state):
@@ -559,7 +630,7 @@ def on_edit_config(icon_obj, item):
 def on_restart(icon_obj, item):
     """Redémarre l’agent en relançant launch_agent.bat, sans nouvelle import."""
     logger.info("Redémarrage manuel de l'agent…")
-    icon_obj.stop()                                   # ferme l'UI actuelle
+    icon_obj.stop()                                     # ferme l'UI actuelle
 
     # Chemin absolu vers launch_agent.bat (même dossier que agent.exe)
     batch_path = os.path.join(os.path.dirname(sys.argv[0]), "launch_agent.bat")
@@ -574,7 +645,7 @@ def on_restart(icon_obj, item):
     except Exception as e:
         logger.error("Échec lancement batch : %s", e)
 
-    sys.exit(0)                                       # termine ce processus
+    sys.exit(0)                                         # termine ce processus
 
 
 def setup_tray():
