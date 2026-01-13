@@ -1,8 +1,13 @@
 """ 
-Agent de monitoring système - Script principal (Optimisé pour Grafana)
-----------------------------------------------
-Ce script surveille les performances système et envoie les données à InfluxDB
-avec une structure de données optimisée (Mesures distinctes).
+Agent de Monitoring Modulaire
+-----------------------------
+Orchestre la collecte de données via des modules dynamiques (CPU, RAM, Disque...)
+et les transmet à une base InfluxDB pour visualisation sous Grafana.
+
+Fonctionnalités :
+- Chargement automatique des modules depuis le dossier 'module/'
+- Gestion de la sécurité (mot de passe chiffré)
+- Interface System Tray pour le contrôle
 """
 
 import os
@@ -32,14 +37,34 @@ from cryptography.fernet import Fernet
 from pystray import Icon, MenuItem, Menu
 
 # Import des modules (Assurez-vous que le dossier 'module' contient les __init__.py et fichiers nécessaires)
-import module.system_info
-import module.cpu_info
-import module.ram_info
-import module.disk_info
-import module.windows_update
-import module.network_info
-import module.anydesk_id
+import pkgutil
+import importlib
+import module
 
+# ---------------------------------------------------------------------------
+# Chargement des Modules
+# ---------------------------------------------------------------------------
+LOADED_MODULES = {}
+def load_modules():
+    global LOADED_MODULES
+    LOADED_MODULES = {}
+    path = module.__path__
+    prefix = module.__name__ + "."
+    
+    for _, name, _ in pkgutil.iter_modules(path, prefix):
+        try:
+            mod = importlib.import_module(name)
+            if hasattr(mod, 'get_data'):
+                short_name = name.split('.')[-1]
+                LOADED_MODULES[short_name] = mod
+                # logger n'est pas encore défini ici, on le fera après ou on ignore
+            else:
+                pass
+        except Exception as e:
+            # logger n'est pas encore initialisé, on print pour débug console si lancé manuellement
+            # Une fois setup_logger appelé, on pourrait re-logger mais c'est le démarrage.
+            print(f"[ERROR] Impossible de charger le module {name}: {e}")
+            
 
 def already_running(mutex_name="Global\\MonitoringAgentMutex"):
     """
@@ -57,11 +82,12 @@ def already_running(mutex_name="Global\\MonitoringAgentMutex"):
     handle = CreateMutexW(None, False, mutex_name)
     return bool(ctypes.get_last_error() == ERROR_ALREADY_EXISTS)
 
-# ── À placer tout en haut du script (avant toute UI) ──
 if already_running():
     sys.exit(0)
 
-# === LOGGING AVANCÉ === #
+# ---------------------------------------------------------------------------
+# Configuration des Logs
+# ---------------------------------------------------------------------------
 def clean_error_message(msg):
     return re.sub(r'at 0x[0-9A-Fa-f]+', 'at <ADDR>', msg)
 
@@ -100,7 +126,9 @@ def setup_logger(log_file='agent.log'):
 
     return logger
 
-# === CONFIGURATION CHIFFREMENT === #
+# ---------------------------------------------------------------------------
+# Chiffrement & Configuration
+# ---------------------------------------------------------------------------
 def generate_key(password: str) -> bytes:
     return base64.urlsafe_b64encode(hashlib.sha256(password.encode()).digest())
 
@@ -402,7 +430,9 @@ def ensure_general_section(config_path):
         with open(config_path, "w", encoding="utf-8") as configfile:
             config_parser.write(configfile)
 
-# === VARIABLES === #
+# ---------------------------------------------------------------------------
+# Constantes Globales & Initialisation
+# ---------------------------------------------------------------------------
 CONFIG_PATH = "config.ini"
 LOG_DIR = "logs"
 LOG_FILE = os.path.join(LOG_DIR, "agent.log")
@@ -413,7 +443,9 @@ ICON_PATHS = {
 }
 
 os.makedirs(LOG_DIR, exist_ok=True)
+
 logger = setup_logger(LOG_FILE)
+load_modules()
 
 
 # Demander le mot de passe au premier lancement
@@ -435,24 +467,33 @@ running = True
 current_status = "running"
 icon = None
 
-# === DONNEES SYSTEME === #
+# ---------------------------------------------------------------------------
+# Collecte & Transmission des Données
+# ---------------------------------------------------------------------------
 def collect_all_data():
+    """
+    Rassemble les données de tous les modules chargés.
+    Retourne : dict {nom_module: donnees_dict}
+    """
     try:
         data = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "system": module.system_info.get_data(),
-            "cpu": module.cpu_info.get_data(),
-            "memory": module.ram_info.get_data(),
-            "disk": module.disk_info.get_data(),
-            "updates": module.windows_update.get_data(),
-            "network": module.network_info.get_data(),
-            "anydesk": module.anydesk_id.get_anydesk_id(),
         }
 
-        # Log des erreurs internes aux modules
-        for module_name, values in data.items():
-            if isinstance(values, dict) and "error" in values:
-                logger.error(f"Erreur dans le module {module_name} : {values['error']}")
+        for name, mod in LOADED_MODULES.items():
+            try:
+                # Récupère les données
+                res = mod.get_data()
+                
+                # Validation du type
+                if not isinstance(res, dict):
+                    raise ValueError(f"Le module doit retourner un dict, reçu: {type(res)}")
+                
+                data[name] = res
+                    
+            except Exception as e:
+                logger.error(f"Erreur module {name}: {e}")
+                data[name] = {"error": str(e)}
 
         return data
 
@@ -462,8 +503,9 @@ def collect_all_data():
 
 def send_to_influx(data):
     """
-    Envoie les données vers InfluxDB avec une structure optimisée pour Grafana.
-    Chaque type de donnée (CPU, RAM, DISK) a son propre 'Measurement'.
+    Envoie les données agrégées vers InfluxDB.
+    Gère la logique personnalisée 'get_influx_points' si définie par le module,
+    sinon envoie des paires clé-valeur simples comme champs.
     """
     if "error" in data:
         return
@@ -472,119 +514,51 @@ def send_to_influx(data):
     company = config["general"].get("company", "unknown")
     
     records = []
+    
+    for key, content in data.items():
+        if key == "timestamp" or key == "error":
+            continue
+            
+        if not isinstance(content, dict):
+            continue
 
-    # 1. CPU
-    # Measurement: "cpu"
-    # Fields: percent, frequency, etc.
-    if "cpu" in data and isinstance(data["cpu"], dict):
-        p = Point("cpu")\
-            .tag("host", hostname)\
-            .tag("company", company)
+        # Si le module a retourné une erreur explicite, on ne l'envoie pas en tant que métrique
+        if "error" in content:
+            # On loggue juste en warning pour éviter le spam, ou on ignore si déjà loggué dans collect_all_data
+            continue
+
+        # Vérifie si le module a une logique custom (ex: disk_info)
+        mod = LOADED_MODULES.get(key)
         
-        for k, v in data["cpu"].items():
-            if isinstance(v, (int, float)):
-                p = p.field(k, v)
-        records.append(p)
-
-    # 2. Mémoire (RAM)
-    # Measurement: "memory"
-    if "memory" in data and isinstance(data["memory"], dict):
-        p = Point("memory")\
-            .tag("host", hostname)\
-            .tag("company", company)
-        
-        for k, v in data["memory"].items():
-            if isinstance(v, (int, float)):
-                p = p.field(k, v)
-        records.append(p)
-
-    # 3. Disques & Partitions
-    # Measurement: "disk" (pour l'espace) et "diskio" (pour la performance)
-    if "disk" in data and isinstance(data["disk"], dict):
-        for disk_name, disk_content in data["disk"].items():
-            if not isinstance(disk_content, dict):
-                continue
-
-            # A. Performance IO (au niveau du disque physique)
-            # On cherche les champs numériques directs (read_bytes, write_bytes, etc.)
-            io_fields = {k: v for k, v in disk_content.items() if isinstance(v, (int, float))}
-            if io_fields:
-                p_io = Point("diskio")\
-                    .tag("host", hostname)\
-                    .tag("company", company)\
-                    .tag("device", disk_name) # ex: PhysicalDrive0
-                
-                for k, v in io_fields.items():
-                    p_io = p_io.field(k, v)
-                records.append(p_io)
-
-            # B. Partitions (Espace disque)
-            # On cherche les sous-dictionnaires (ex: "C:", "D:")
-            for sub_key, sub_val in disk_content.items():
-                if isinstance(sub_val, dict):
-                    # sub_key est le point de montage (ex: "C")
-                    p_part = Point("disk")\
-                        .tag("host", hostname)\
-                        .tag("company", company)\
-                        .tag("device", disk_name)\
-                        .tag("mountpoint", sub_key)
-                    
-                    has_fields = False
-                    for k, v in sub_val.items():
-                        if isinstance(v, (int, float)):
-                            p_part = p_part.field(k, v)
-                            has_fields = True
-                    
-                    if has_fields:
-                        records.append(p_part)
-
-    # 4. Réseau
-    # Measurement: "network"
-    if "network" in data and isinstance(data["network"], dict):
-        p = Point("network")\
-            .tag("host", hostname)\
-            .tag("company", company)
-        
-        for k, v in data["network"].items():
-            if isinstance(v, (int, float)):
-                p = p.field(k, v)
-        records.append(p)
-
-    # 5. Mises à jour Windows
-    # Measurement: "updates"
-    if "updates" in data and isinstance(data["updates"], dict):
-        p = Point("updates")\
-            .tag("host", hostname)\
-            .tag("company", company)
-        
-        has_fields = False
-        for k, v in data["updates"].items():
-            # On accepte int/float et booleens convertis en int
-            if isinstance(v, (int, float)):
-                p = p.field(k, v)
-                has_fields = True
-            elif isinstance(v, bool):
-                p = p.field(k, int(v))
-                has_fields = True
-        
-        if has_fields:
-            records.append(p)
-
-    # 6. Système (Info générales + Uptime)
-    # Measurement: "system"
-    if "system" in data and isinstance(data["system"], dict):
-        p = Point("system")\
-            .tag("host", hostname)\
-            .tag("company", company)
-        
-        # On ajoute AnyDesk ici si disponible
-        if "anydesk" in data and data["anydesk"]:
-             p = p.field("anydesk_id", str(data["anydesk"]))
-
-        for k, v in data["system"].items():
-            if isinstance(v, (int, float, str, bool)):
-                p = p.field(k, v)
-        records.append(p)
+        if mod and hasattr(mod, "get_influx_points"):
+            # Délégation au module
+            try:
+                points = mod.get_influx_points(content, hostname, company)
+                if points:
+                    records.extend(points)
+            except Exception as e:
+                logger.error(f"Erreur get_influx_points pour {key}: {e}")
+        else:
+            # === LOGIQUE GÉNÉRIQUE ===
+            # Crée un point simple avec le nom de la clé comme measurement
+            # Convertit tous les champs scalaires
+            point = Point(key).tag("host", hostname).tag("company", company)
+            has_fields = False
+            
+            for metric_name, metric_value in content.items():
+                if isinstance(metric_value, (int, float)):
+                    point = point.field(metric_name, metric_value)
+                    has_fields = True
+                elif isinstance(metric_value, bool):
+                    point = point.field(metric_name, int(metric_value))
+                    has_fields = True
+                elif isinstance(metric_value, str):
+                     # Influx accepte les strings
+                     point = point.field(metric_name, metric_value)
+                     has_fields = True
+            
+            if has_fields:
+                records.append(point)
 
     # Envoi global
     if records:
@@ -593,7 +567,9 @@ def send_to_influx(data):
         except Exception as e:
             logger.error(f"Erreur lors de l'envoi InfluxDB: {e}")
 
-# === ICON DYNAMIQUE === #
+# ---------------------------------------------------------------------------
+# Icône Dynamique (System Tray)
+# ---------------------------------------------------------------------------
 def update_icon(state):
     global current_status, icon
     if state == current_status:
@@ -605,7 +581,9 @@ def update_icon(state):
     except Exception as e:
         logger.warning(f"Erreur changement d'icône ({state}): {e}")
 
-# === FONCTIONS SYSTRAY === #
+# ---------------------------------------------------------------------------
+# Gestionnaires du System Tray
+# ---------------------------------------------------------------------------
 def on_toggle_run(icon_obj, item):
     global running
     running = not running
@@ -660,7 +638,9 @@ def setup_tray():
     ))
     icon.run()
 
-# === THREAD PRINCIPAL === #
+# ---------------------------------------------------------------------------
+# Boucle Principale d'Exécution
+# ---------------------------------------------------------------------------
 def main_loop():
     while True:
         try:
@@ -680,3 +660,8 @@ if __name__ == "__main__":
     logger.info("Agent démarré.")
     threading.Thread(target=main_loop, daemon=True).start()
     setup_tray()
+
+# ================================================= #
+#                 CODED BY TRISTAN                  #
+#           https://carretey-tristan.dev            #
+# ================================================= #
