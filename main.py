@@ -40,6 +40,13 @@ from pystray import Icon, MenuItem, Menu
 import pkgutil
 import importlib
 import module
+from tufup.client import Client
+
+# ---------------------------------------------------------------------------
+# Constants & Configuration Tufup
+# ---------------------------------------------------------------------------
+APP_NAME = "agent" # Doit correspondre à APP_NAME dans release.py
+VERSION = "1.0.31"     # VERSION ACTUELLE - A INCREMENTER POUR CHAQUE RELEASE
 
 # ---------------------------------------------------------------------------
 # Chargement des Modules
@@ -123,6 +130,12 @@ def setup_logger(log_file='agent.log'):
 
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
+
+    # Capturer aussi les logs de Tufup
+    tufup_logger = logging.getLogger("tufup")
+    tufup_logger.setLevel(logging.INFO)
+    tufup_logger.addHandler(file_handler)
+    tufup_logger.addHandler(console_handler)
 
     return logger
 
@@ -566,6 +579,7 @@ def send_to_influx(data):
             write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=records)
         except Exception as e:
             logger.error(f"Erreur lors de l'envoi InfluxDB: {e}")
+            raise e
 
 # ---------------------------------------------------------------------------
 # Icône Dynamique (System Tray)
@@ -626,11 +640,15 @@ def on_restart(icon_obj, item):
     sys.exit(0)                                         # termine ce processus
 
 
+def on_check_updates_click(icon_obj, item):
+    threading.Thread(target=check_for_updates, daemon=True).start()
+
 def setup_tray():
     global icon
     image = Image.open(ICON_PATHS["running"])
     icon = Icon("agent_monitoring", image, "Agent de Monitoring", menu=Menu(
         MenuItem("⏯ Démarrer / Pause", on_toggle_run),
+        MenuItem("📥 Rechercher une mise à jour", on_check_updates_click),
         MenuItem("📂 Ouvrir le fichier log", on_open_log),
         MenuItem("🛠 Modifier le fichier config", on_edit_config),
         MenuItem("🔄 Redémarrer l'agent", on_restart),
@@ -641,7 +659,165 @@ def setup_tray():
 # ---------------------------------------------------------------------------
 # Boucle Principale d'Exécution
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Mise à jour Automatique (Tufup)
+# ---------------------------------------------------------------------------
+def apply_update_windows(src_dir, dst_dir, **kwargs):
+    """
+    Installe la mise à jour sur Windows en contournant le verrouillage des fichiers.
+    Crée un script batch temporaire qui :
+    1. Attend que l'agent se ferme.
+    2. Copie les nouveaux fichiers.
+    3. Relance l'agent.
+    """
+    import subprocess
+    import tempfile
+
+    # Création du script batch temporaire avec plus de robustesse
+    log_file = os.path.join(tempfile.gettempdir(), "update_agent.log")
+    batch_content = f"""@echo off
+echo Starting update... > "{log_file}"
+timeout /t 5 /nobreak > nul
+taskkill /F /IM agent.exe >> "{log_file}" 2>&1
+timeout /t 1 /nobreak > nul
+echo Copying files from {src_dir} to {dst_dir} >> "{log_file}"
+xcopy /E /Y "{src_dir}\\*" "{dst_dir}\\" >> "{log_file}" 2>&1
+if %errorlevel% neq 0 (
+    echo XCOPY FAILED %errorlevel% >> "{log_file}"
+    exit /b %errorlevel%
+)
+echo Launching agent... >> "{log_file}"
+echo Launching agent via Explorer... >> "{log_file}"
+if exist "{dst_dir}\\launch_agent.bat" (
+    echo Using launch_agent.bat >> "{log_file}"
+    explorer.exe "{dst_dir}\\launch_agent.bat"
+) else (
+    echo Using direct agent.exe start >> "{log_file}"
+    explorer.exe "{dst_dir}\\agent.exe"
+)
+del "%~f0"
+"""
+    fd, batch_path = tempfile.mkstemp(suffix=".bat", text=True)
+    with os.fdopen(fd, 'w') as f:
+        f.write(batch_content)
+    
+    logger.info(f"Tufup: Lancement du script de mise à jour : {batch_path}")
+    
+    
+    # Lancement du batch en mode détaché avec un environnement nettoyé
+    # On supprime les variables qui pourraient perturber PyInstaller (PYTHONPATH, etc.)
+    env = os.environ.copy()
+    env.pop('PYTHONPATH', None)
+    env.pop('PYTHONHOME', None)
+    
+    subprocess.Popen(batch_path, shell=True, creationflags=subprocess.CREATE_NEW_CONSOLE, env=env)
+    
+    # Fermeture immédiate de l'agent pour libérer les fichiers
+    logger.info("Tufup: Fermeture de l'agent pour mise à jour...")
+    if icon:
+        icon.stop()
+    sys.exit(0)
+
+def check_for_updates():
+    """Vérifie et applique les mises à jour en arrière-plan."""
+    logger.info("Tufup: Vérification des mises à jour...")
+    
+    # Dossiers locaux pour stocker les métadonnées de sécurité et les téléchargements
+    # Utilisation d'un dossier dans LOCALAPPDATA pour éviter les problèmes de droits
+    user_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser("~")), APP_NAME, "updates")
+    metadata_dir = os.path.join(user_dir, "metadata")
+    os.makedirs(metadata_dir, exist_ok=True)
+    os.makedirs(os.path.join(user_dir, "targets"), exist_ok=True)
+
+    # 0. Initialisation : Copie du root.json initial si absent
+    root_json_path = os.path.join(metadata_dir, "root.json")
+    if not os.path.exists(root_json_path):
+        # On cherche le root.json à côté de l'exécutable
+        exe_dir = os.path.dirname(sys.executable)
+        bundled_root = os.path.join(exe_dir, "root.json")
+        
+        # Fallback pour le dev (si on lance main.py directement)
+        if not os.path.exists(bundled_root):
+             bundled_root = "root.json" # Dossier courant
+
+        if os.path.exists(bundled_root):
+            try:
+                import shutil
+                shutil.copy(bundled_root, root_json_path)
+                logger.info(f"Tufup: Initialisation - root.json copié depuis {bundled_root}")
+            except Exception as e:
+                logger.error(f"Tufup: Impossible de copier le root.json initial : {e}")
+        else:
+             logger.warning("Tufup: Fichier root.json introuvable. La mise à jour est impossible sans ce fichier de confiance.")
+
+    # Récupération de la configuration Update depuis config.ini (section [update])
+    # Cette section est automatiquement déchiffrée par decrypt_ini si présente via le mécanisme existant
+    
+    # Valeurs par défaut
+    current_update_url = None
+    current_user = None
+    current_password = None
+
+    if "update" in config:
+        if "url" in config["update"]:
+            current_update_url = config["update"]["url"].strip()
+        if "user" in config["update"]:
+             current_user = config["update"]["user"].strip()
+        if "password" in config["update"]:
+             current_password = config["update"]["password"].strip()
+    
+    # Configuration de l'authentification (si définie)
+    session_auth = None
+    if current_user and current_password:
+        # Tufup attend la racine du site (scheme://netloc) comme clé, sans le path (/repository)
+        # On doit parser l'URL pour extraire la racine
+        from urllib.parse import urlparse
+        parsed = urlparse(current_update_url)
+        root_url = f"{parsed.scheme}://{parsed.netloc}"
+        
+        session_auth = {root_url: (current_user, current_password)}
+
+    try:
+        client = Client(
+            app_name=APP_NAME,
+            app_install_dir=os.path.dirname(sys.executable), # Dossier de l'exe actuel
+            current_version=VERSION,
+            metadata_dir=metadata_dir,
+            metadata_base_url=f"{current_update_url}/metadata",
+            target_dir=os.path.join(user_dir, "targets"),
+            target_base_url=f"{current_update_url}/targets",
+            session_auth=session_auth,
+        )
+
+        # 2. Vérification s'il y a une nouveauté
+
+# ...
+
+        # 2. Vérification s'il y a une nouveauté
+        if client.check_for_updates():
+            logger.info("Tufup: Une nouvelle mise à jour est disponible ! Téléchargement...")
+            
+            # Notification avant fermeture
+            if icon:
+                icon.notify("L'agent va redémarrer pour installer la mise à jour.", "Mise à jour prête")
+
+            # 3. Téléchargement et application avec installateur personnalisé
+            client.download_and_apply_update(
+                skip_confirmation=True, 
+                install=apply_update_windows
+            )
+            # Normalement on n'arrive jamais ici car apply_update_windows fait sys.exit()
+            
+        else:
+            logger.info("Tufup: Aucune mise à jour disponible.")
+
+    except Exception as e:
+        logger.warning(f"Tufup Error: {e}")
+
 def main_loop():
+    # Lancement de la vérification de mise à jour au démarrage dans un thread séparé
+    threading.Thread(target=check_for_updates, daemon=True).start()
+
     while True:
         try:
             if running:
