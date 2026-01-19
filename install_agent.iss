@@ -12,7 +12,8 @@ PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 
 [Files]
-Source: "agent.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\agent.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "repository\metadata\root.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "launch_agent.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "config.ini"; DestDir: "{app}"; Flags: ignoreversion
 Source: "images\logo_monitoring.png"; DestDir: "{app}\images"; Flags: ignoreversion

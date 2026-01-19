@@ -46,7 +46,7 @@ from tufup.client import Client
 # Constants & Configuration Tufup
 # ---------------------------------------------------------------------------
 APP_NAME = "agent" # Doit correspondre à APP_NAME dans release.py
-VERSION = "1.0.31"     # VERSION ACTUELLE - A INCREMENTER POUR CHAQUE RELEASE
+VERSION = "1.1.0"     # VERSION ACTUELLE - A INCREMENTER POUR CHAQUE RELEASE
 
 # ---------------------------------------------------------------------------
 # Chargement des Modules
@@ -673,7 +673,7 @@ def apply_update_windows(src_dir, dst_dir, **kwargs):
     import subprocess
     import tempfile
 
-    # Création du script batch temporaire avec plus de robustesse
+    # Création du script batch temporaire 
     log_file = os.path.join(tempfile.gettempdir(), "update_agent.log")
     batch_content = f"""@echo off
 echo Starting update... > "{log_file}"
@@ -817,9 +817,16 @@ def check_for_updates():
 def main_loop():
     # Lancement de la vérification de mise à jour au démarrage dans un thread séparé
     threading.Thread(target=check_for_updates, daemon=True).start()
+    last_update_check = time.time()
 
     while True:
         try:
+            # Vérification des mises à jour toutes les heures (3600 secondes)
+            if time.time() - last_update_check >= 3600:
+                logger.info("Vérification périodique des mises à jour...")
+                threading.Thread(target=check_for_updates, daemon=True).start()
+                last_update_check = time.time()
+
             if running:
                 data = collect_all_data()
                 send_to_influx(data)
