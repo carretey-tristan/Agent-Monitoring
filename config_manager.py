@@ -1,3 +1,4 @@
+import sys
 import configparser
 import logging
 import os
@@ -6,17 +7,26 @@ from security import generate_key
 
 logger = logging.getLogger("agent")
 
-# Constants
-CONFIG_PATH = "config.ini"
-LOG_DIR = "logs"
+# Définition du dossier de base (absolu)
+if getattr(sys, 'frozen', False):
+    # Si on est dans un .exe (PyInstaller)
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    # Si on est en script .py
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Constants with absolute paths
+CONFIG_PATH = os.path.join(BASE_DIR, "config.ini")
+LOG_DIR = os.path.join(BASE_DIR, "logs")
 LOG_FILE = os.path.join(LOG_DIR, "agent.log")
+
 ICON_PATHS = {
-    "running": "./images/logo_monitoring.png",
-    "paused": "./images/logo_monitoring_pause.png",
-    "error": "./images/logo_monitoring_broke.png"
+    "running": os.path.join(BASE_DIR, "images", "logo_monitoring.png"),
+    "paused": os.path.join(BASE_DIR, "images", "logo_monitoring_pause.png"),
+    "error": os.path.join(BASE_DIR, "images", "logo_monitoring_broke.png")
 }
 APP_NAME = "agent"
-VERSION = "1.1.4"
+VERSION = "1.1.9"
 
 def decrypt_ini(file_path: str, key: bytes):
     config = configparser.ConfigParser()

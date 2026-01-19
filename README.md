@@ -80,8 +80,23 @@ Pour créer un exécutable autonome (`.exe`), utilisez **PyInstaller** (via le f
 ```bash
 pyinstaller agent.spec
 ```
-
 L'exécutable sera généré dans le dossier `dist/`.
+
+### 4. Création de l'installateur (Inno Setup)
+
+Pour générer un fichier d'installation professionnel (`setup_agent.exe`) :
+
+1.  Installez **Inno Setup Compiler**.
+2.  Assurez-vous d'avoir généré le dossier `dist/` avec PyInstaller (voir étape 3).
+3.  Ouvrez le fichier `install_agent.iss`.
+4.  Cliquez sur **Compile**.
+
+L'installateur sera créé dans le dossier `dist/`. Il gère :
+
+- La copie des fichiers.
+- La création de deux Tâches Planifiées Windows :
+  - **ONSTART (SYSTEM)** : Pour que l'agent tourne même sans session utilisateur ouverte.
+  - **ONLOGON** : Pour lancer l'interface Tray Icon à l'ouverture de session.
 
 ---
 
@@ -196,10 +211,15 @@ L'agent fonctionne en arrière-plan. Une icône dans la zone de notification (Sy
 
 ## Dépannage (Troubleshooting)
 
-### Logs
+### Logs Améliorés
 
-Les logs sont situés dans `logs/agent.log`. Ils sont rotatifs (max 5MB, 10 backups).
-Le niveau de log par défaut est `INFO`.
+Les logs sont situés dans `logs/agent.log`. Le système de logging a été optimisé :
+
+- **Rotation** : Max 5MB par fichier, 10 backups conservés.
+- **Anti-Flood** : Évite la répétition massive des mêmes erreurs (cooldown de 20s).
+- **Traceback** : En cas de crash, la pile d'appels complète est enregistrée pour faciliter le debug.
+- **Performance** : Un avertissement (`WARNING`) est généré si la collecte de données prend plus de **5 secondes**.
+- **Audit Démarrage** : La version, le nom de la machine et la liste des modules chargés sont inscrits à chaque démarrage.
 
 ### Erreurs Fréquentes
 
@@ -218,8 +238,14 @@ Le niveau de log par défaut est `INFO`.
 
 - **Langage** : Python 3.
 - **Bibliothèques Clés** : `influxdb-client`, `pystray` (UI), `cryptography` (Sécurité), `psutil` (Métriques), `tufup` (Updates).
-- **Point d'entrée** : `main.py`.
-- **Boucle Principale** : `main_loop()` - Itération infinie avec `time.sleep(10)`.
+- **Point d'entrée** : `main.py` (Léger, orchestration).
+- **Core** : `agent_core.py` (Boucle principale, logique métier).
+- **Sécurité** : `security.py` (Chiffrement, Registre, Mutex).
+- **Interface** : `gui.py` (System Tray, Dialogues Tkinter, Éditeur chiffré).
+- **Config** : `config_manager.py` (Parsing INI).
+- **Logs** : `logging_utils.py`.
+- **Modules** : Dossier `module/` (Scripts de collecte).
+- **Boucle Principale** : `agent_core.AgentCore.run_loop()` - Itération infinie avec `time.sleep(10)`.
 
 ### Processus de Mise à Jour (Tufup)
 
@@ -233,6 +259,9 @@ L'agent vérifie les mises à jour au démarrage, **toutes les heures (3600s)**,
 ---
 
 # =================================================
-##              CODED BY TRISTAN
-##          https://carretey-tristan.dev
+
+## CODED BY TRISTAN
+
+## https://carretey-tristan.dev
+
 # =================================================

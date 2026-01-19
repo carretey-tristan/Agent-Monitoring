@@ -25,6 +25,14 @@ class AgentCore:
         self.write_api = None
         self.gui_callback = None
         
+        # Verrou pour éviter l'empilement des updates
+        self.update_lock = threading.Lock()
+        
+        logger.info(f"--- Initialisation Core Agent v{VERSION} ---")
+        hostname = self.config["general"].get("name", "N/A")
+        company = self.config["general"].get("company", "N/A")
+        logger.info(f"Config: Machine='{hostname}', Société='{company}'")
+
         # Init Influx
         self._init_influx()
         
@@ -41,7 +49,7 @@ class AgentCore:
             self.client = InfluxDBClient(url=url, token=token, org=org)
             self.write_api = self.client.write_api(write_options=SYNCHRONOUS)
         except Exception as e:
-            logger.error(f"Erreur init InfluxDB: {e}")
+            logger.error(f"Erreur init InfluxDB: {e}", exc_info=True)
             self.status = "error"
 
     def set_gui_callback(self, callback):
@@ -61,9 +69,12 @@ class AgentCore:
                 else:
                     pass
             except Exception as e:
-                logger.error(f"Impossible de charger le module {name}: {e}")
+                logger.error(f"Impossible de charger le module {name}: {e}", exc_info=True)
+        
+        logger.info(f"Modules chargés : {', '.join(self.loaded_modules.keys())}")
 
     def collect_all_data(self):
+        start_time = time.time()
         try:
             data = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -76,12 +87,17 @@ class AgentCore:
                         raise ValueError(f"Le module doit retourner un dict, reçu: {type(res)}")
                     data[name] = res
                 except Exception as e:
-                    logger.error(f"Erreur module {name}: {e}")
+                    logger.error(f"Erreur module {name}: {e}", exc_info=True)
                     data[name] = {"error": str(e)}
-
+            
+            # Performance monitoring : Log only if slow (> 5s)
+            duration = time.time() - start_time
+            if duration > 5.0:
+                 logger.warning(f"Performance: Collecte lente ({duration:.2f}s). Vérifiez les modules.")
+            
             return data
         except Exception as e:
-            logger.error(f"Data collection failed: {e}")
+            logger.error(f"Data collection failed: {e}", exc_info=True)
             return {"error": str(e)}
 
     def send_to_influx(self, data):
@@ -108,7 +124,7 @@ class AgentCore:
                     if points:
                         records.extend(points)
                 except Exception as e:
-                    logger.error(f"Erreur get_influx_points pour {key}: {e}")
+                    logger.error(f"Erreur get_influx_points pour {key}: {e}", exc_info=True)
             else:
                 point = Point(key).tag("host", hostname).tag("company", company)
                 has_fields = False
@@ -126,7 +142,7 @@ class AgentCore:
             try:
                 self.write_api.write(bucket=self.bucket, org=self.config["influxdb"]["org"], record=records)
             except Exception as e:
-                logger.error(f"Erreur envoi InfluxDB: {e}")
+                logger.error(f"Erreur envoi InfluxDB: {e}", exc_info=True)
                 self.status = "error"
                 # raise e # Optional: propagate to main loop
 
@@ -151,12 +167,15 @@ class AgentCore:
         import subprocess
         import tempfile
         
+        # Récupération dynamique du nom de l'exécutable pour le kill/restart
+        exe_name = os.path.basename(sys.executable)
+        
         log_file = os.path.join(tempfile.gettempdir(), "update_agent.log")
         # Note: Logic duplicated from original main.py, could be shared util
         batch_content = f"""@echo off
 echo Starting update... > "{log_file}"
 timeout /t 5 /nobreak > nul
-taskkill /F /IM agent.exe >> "{log_file}" 2>&1
+taskkill /F /IM {exe_name} >> "{log_file}" 2>&1
 timeout /t 1 /nobreak > nul
 echo Copying files from {src_dir} to {dst_dir} >> "{log_file}"
 xcopy /E /Y "{src_dir}\\*" "{dst_dir}\\" >> "{log_file}" 2>&1
@@ -168,7 +187,7 @@ echo Launching agent... >> "{log_file}"
 if exist "{dst_dir}\\launch_agent.bat" (
     explorer.exe "{dst_dir}\\launch_agent.bat"
 ) else (
-    explorer.exe "{dst_dir}\\agent.exe"
+    explorer.exe "{dst_dir}\\{exe_name}"
 )
 del "%~f0"
 """
@@ -187,65 +206,78 @@ del "%~f0"
         sys.exit(0)
 
     def check_for_updates(self):
-        logger.info("Tufup: Vérification des mises à jour...")
-        
-        user_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser("~")), APP_NAME, "updates")
-        metadata_dir = os.path.join(user_dir, "metadata")
-        os.makedirs(metadata_dir, exist_ok=True)
-        os.makedirs(os.path.join(user_dir, "targets"), exist_ok=True)
-        
-        # Init root.json if needed
-        root_json_path = os.path.join(metadata_dir, "root.json")
-        if not os.path.exists(root_json_path):
-             exe_dir = os.path.dirname(sys.executable)
-             bundled_root = os.path.join(exe_dir, "root.json")
-             if not os.path.exists(bundled_root):
-                  bundled_root = "root.json"
-             if os.path.exists(bundled_root):
-                  import shutil
-                  try:
-                       shutil.copy(bundled_root, root_json_path)
-                  except: pass
-
-        # Get update config
-        update_cfg = self.config.get("update", {})
-        url = update_cfg.get("url", "")
-        if not url:
-             logger.info("Tufup: Pas d'URL de mise à jour configurée.")
+        if not self.update_lock.acquire(blocking=False):
+             logger.warning("Tufup: Vérification déjà en cours. Ignorée.")
              return
 
-        session_auth = None
-        if update_cfg.get("user") and update_cfg.get("password"):
-             from urllib.parse import urlparse
-             parsed = urlparse(url)
-             root_url = f"{parsed.scheme}://{parsed.netloc}"
-             session_auth = {root_url: (update_cfg["user"], update_cfg["password"])}
-
         try:
-            client = Client(
-                app_name=APP_NAME,
-                app_install_dir=os.path.dirname(sys.executable),
-                current_version=VERSION,
-                metadata_dir=metadata_dir,
-                metadata_base_url=f"{url}/metadata",
-                target_dir=os.path.join(user_dir, "targets"),
-                target_base_url=f"{url}/targets",
-                session_auth=session_auth
-            )
-
-            if client.check_for_updates():
-                logger.info("Tufup: Mise à jour disponible !")
-                if self.gui_callback:
-                     self.gui_callback("Mise à jour prête", "L'agent va redémarrer pour la mise à jour.")
+            try:
+                logger.info("Tufup: Vérification des mises à jour...")
                 
-                client.download_and_apply_update(
-                    skip_confirmation=True,
-                    install=self.apply_update_windows
+                user_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser("~")), APP_NAME, "updates")
+                metadata_dir = os.path.join(user_dir, "metadata")
+                os.makedirs(metadata_dir, exist_ok=True)
+                os.makedirs(os.path.join(user_dir, "targets"), exist_ok=True)
+                
+                # Init root.json if needed
+                root_json_path = os.path.join(metadata_dir, "root.json")
+                if not os.path.exists(root_json_path):
+                     exe_dir = os.path.dirname(sys.executable)
+                     bundled_root = os.path.join(exe_dir, "root.json")
+                     if not os.path.exists(bundled_root):
+                          bundled_root = "root.json"
+                     if os.path.exists(bundled_root):
+                          import shutil
+                          try:
+                               shutil.copy(bundled_root, root_json_path)
+                          except: pass
+
+                # Get update config
+                if "update" in self.config:
+                    update_cfg = self.config["update"]
+                else:
+                    update_cfg = {}
+
+                url = update_cfg.get("url", "")
+                if not url:
+                     logger.info("Tufup: Pas d'URL de mise à jour configurée.")
+                     return
+
+                session_auth = None
+                if update_cfg.get("user") and update_cfg.get("password"):
+                     from urllib.parse import urlparse
+                     parsed = urlparse(url)
+                     root_url = f"{parsed.scheme}://{parsed.netloc}"
+                     session_auth = {root_url: (update_cfg["user"], update_cfg["password"])}
+
+                client = Client(
+                    app_name=APP_NAME,
+                    app_install_dir=os.path.dirname(sys.executable),
+                    current_version=VERSION,
+                    metadata_dir=metadata_dir,
+                    metadata_base_url=f"{url}/metadata",
+                    target_dir=os.path.join(user_dir, "targets"),
+                    target_base_url=f"{url}/targets",
+                    session_auth=session_auth
                 )
-            else:
-                logger.info("Tufup: À jour.")
-        except Exception as e:
-            logger.warning(f"Tufup Check Error: {e}")
+
+                if client.check_for_updates():
+                    logger.info("Tufup: Mise à jour disponible !")
+                    if self.gui_callback:
+                         self.gui_callback("Mise à jour prête", "L'agent va redémarrer pour la mise à jour.")
+                    
+                    client.download_and_apply_update(
+                        skip_confirmation=True,
+                        install=self.apply_update_windows
+                    )
+                else:
+                    logger.info("Tufup: À jour.")
+
+            except Exception as e:
+                logger.error(f"Tufup Check Error: {e}", exc_info=True)
+
+        finally:
+            self.update_lock.release()
 
     def run_loop(self):
         # Initial check
