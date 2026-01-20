@@ -11,7 +11,7 @@ from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
 from tufup.client import Client
 
-from config_manager import APP_NAME, VERSION
+from config_manager import APP_NAME, VERSION, BASE_DIR
 
 logger = logging.getLogger("agent")
 
@@ -170,6 +170,15 @@ class AgentCore:
         # Récupération dynamique du nom de l'exécutable pour le kill/restart
         exe_name = os.path.basename(sys.executable)
         
+        # SAFEGUARD: On supprime config.ini de la source de mise à jour pour ne JAMAIS écraser la config utilisateur
+        cfg_in_update = os.path.join(src_dir, "config.ini")
+        if os.path.exists(cfg_in_update):
+            try:
+                os.remove(cfg_in_update)
+                logger.info("Update: config.ini supprimé du paquet de mise à jour (Protection réglages utilisateur).")
+            except Exception as e:
+                logger.warning(f"Update: Impossible de supprimer config.ini du paquet: {e}")
+
         log_file = os.path.join(tempfile.gettempdir(), "update_agent.log")
         # Note: Logic duplicated from original main.py, could be shared util
         batch_content = f"""@echo off
@@ -214,10 +223,14 @@ del "%~f0"
             try:
                 logger.info("Tufup: Vérification des mises à jour...")
                 
-                user_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser("~")), APP_NAME, "updates")
+                user_dir = os.path.join(BASE_DIR, "updates")
                 metadata_dir = os.path.join(user_dir, "metadata")
+                targets_dir = os.path.join(user_dir, "targets")
                 os.makedirs(metadata_dir, exist_ok=True)
-                os.makedirs(os.path.join(user_dir, "targets"), exist_ok=True)
+                os.makedirs(targets_dir, exist_ok=True)
+                
+                # Nettoyage préventif
+                self.cleanup_targets(targets_dir, keep=2)
                 
                 # Init root.json if needed
                 root_json_path = os.path.join(metadata_dir, "root.json")
@@ -278,6 +291,35 @@ del "%~f0"
 
         finally:
             self.update_lock.release()
+
+    def cleanup_targets(self, targets_dir, keep=2):
+        """
+        Nettoie le dossier targets pour ne garder que les 'keep' fichiers les plus récents.
+        """
+        try:
+            if not os.path.exists(targets_dir):
+                return
+
+            files = []
+            for f in os.listdir(targets_dir):
+                full_path = os.path.join(targets_dir, f)
+                if os.path.isfile(full_path):
+                    files.append(full_path)
+            
+            # Trier par date de modification (plus récent en dernier)
+            files.sort(key=os.path.getmtime)
+            
+            # S'il y a plus de fichiers que 'keep'
+            if len(files) > keep:
+                to_delete = files[:-keep]
+                for f in to_delete:
+                    try:
+                        os.remove(f)
+                        logger.info(f"Cleanup: Suppression ancienne mise à jour : {f}")
+                    except Exception as e:
+                        logger.warning(f"Cleanup: Impossible de supprimer {f}: {e}")
+        except Exception as e:
+            logger.error(f"Erreur lors du nettoyage des targets: {e}")
 
     def run_loop(self):
         # Initial check

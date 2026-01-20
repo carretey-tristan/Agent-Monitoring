@@ -1,7 +1,0 @@
-influxdb-client
-Pillow
-cryptography
-pystray
-tufup
-psutil
-pyinstaller

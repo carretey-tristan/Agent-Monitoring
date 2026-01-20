@@ -53,11 +53,20 @@ def build_and_publish(version):
     if os.path.exists("launch_agent.bat"):
         shutil.copy("launch_agent.bat", DIST_DIR)
         print(f">>> Copied launch_agent.bat to {DIST_DIR}")
+        
+    # Copy images directory to dist
+    if os.path.exists("images"):
+        dest_images = os.path.join(DIST_DIR, "images")
+        # Ensure destination doesn't exist or use dirs_exist_ok (Python 3.8+)
+        if os.path.exists(dest_images):
+             shutil.rmtree(dest_images)
+        shutil.copytree("images", dest_images)
+        print(f">>> Copied images to {dest_images}")
 
-    # Copy config.ini to dist so it is included in the update (pour mettre à jour les URLs)
-    if os.path.exists("config.ini"):
-        shutil.copy("config.ini", DIST_DIR)
-        print(f">>> Copied config.ini to {DIST_DIR}")
+    # Copy config.ini to dist NO LONGER DONE to prevent overwriting user config
+    # if os.path.exists("config.ini"):
+    #     shutil.copy("config.ini", DIST_DIR)
+    #     print(f">>> Copied config.ini to {DIST_DIR}")
 
     # 2. Add to Tufup Repo
     print(f">>> Adding bundle to repository...")
