@@ -26,7 +26,7 @@ ICON_PATHS = {
     "error": os.path.join(BASE_DIR, "images", "logo_monitoring_broke.png")
 }
 APP_NAME = "agent"
-VERSION = "1.1.9"
+VERSION = "1.0.11"
 
 def decrypt_ini(file_path: str, key: bytes):
     config = configparser.ConfigParser()

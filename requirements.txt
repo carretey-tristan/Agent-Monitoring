@@ -4,3 +4,4 @@ cryptography
 pystray
 tufup
 psutil
+pyinstaller
