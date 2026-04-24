@@ -13,6 +13,20 @@ from tufup.client import Client
 
 from config_manager import APP_NAME, VERSION, BASE_DIR
 
+import tufup.client
+
+# --- MONKEYPATCH: Disable SSL Verification ---
+# Permet les mises à jour depuis une IP avec certificat auto-signé
+class InsecureAuthRequestsFetcher(tufup.client.AuthRequestsFetcher):
+    def _get_session(self, url: str):
+        session = super()._get_session(url)
+        session.verify = False  # DESACTIVE LA VERIF SSL
+        return session
+
+# Applique le patch
+tufup.client.AuthRequestsFetcher = InsecureAuthRequestsFetcher
+# ---------------------------------------------
+
 logger = logging.getLogger("agent")
 
 class AgentCore:
@@ -25,7 +39,7 @@ class AgentCore:
         self.write_api = None
         self.gui_callback = None
         
-        # Verrou pour éviter l'empilement des updates
+        # Verrou mises à jour
         self.update_lock = threading.Lock()
         
         logger.info(f"--- Initialisation Core Agent v{VERSION} ---")
@@ -33,10 +47,10 @@ class AgentCore:
         company = self.config["general"].get("company", "N/A")
         logger.info(f"Config: Machine='{hostname}', Société='{company}'")
 
-        # Init Influx
+        # Init InfluxDB
         self._init_influx()
         
-        # Load Modules
+        # Chargement modules
         self.load_modules()
 
     def _init_influx(self):
@@ -46,11 +60,21 @@ class AgentCore:
             org = self.config["influxdb"]["org"]
             self.bucket = self.config["influxdb"]["bucket"]
             
-            self.client = InfluxDBClient(url=url, token=token, org=org)
+            # Validation URL
+            if not url.startswith("http"):
+                 logger.error("Configuration InfluxDB invalide: URL doit commencer par http/https.")
+                 self.set_status("error")
+                 return
+            
+            # Connexion sans vérif SSL ([!WARNING] Risqué en prod publique)
+            self.client = InfluxDBClient(url=url, token=token, org=org, verify_ssl=False)
             self.write_api = self.client.write_api(write_options=SYNCHRONOUS)
+            logger.info("InfluxDB init OK (SSL Verify=False)")
+
         except Exception as e:
-            logger.error(f"Erreur init InfluxDB: {e}", exc_info=True)
-            self.status = "error"
+            # Log erreur Influx (court)
+            logger.error(f"Erreur init InfluxDB: {e}")
+            self.set_status("error")
 
     def set_gui_callback(self, callback):
         self.gui_callback = callback
@@ -90,9 +114,9 @@ class AgentCore:
                     logger.error(f"Erreur module {name}: {e}", exc_info=True)
                     data[name] = {"error": str(e)}
             
-            # Performance monitoring : Log only if slow (> 5s)
+            # Monitoring perfs (>15s)
             duration = time.time() - start_time
-            if duration > 5.0:
+            if duration > 15.0:
                  logger.warning(f"Performance: Collecte lente ({duration:.2f}s). Vérifiez les modules.")
             
             return data
@@ -101,6 +125,7 @@ class AgentCore:
             return {"error": str(e)}
 
     def send_to_influx(self, data):
+        # Eviter crash si init échoué
         if "error" in data or not self.write_api:
             return
 
@@ -141,12 +166,16 @@ class AgentCore:
         if records:
             try:
                 self.write_api.write(bucket=self.bucket, org=self.config["influxdb"]["org"], record=records)
+                # Succès : retour état normal
+                if self.status == "error":
+                     self.set_status("running")
+                     logger.info("Connexion InfluxDB rétablie.")
             except Exception as e:
-                logger.error(f"Erreur envoi InfluxDB: {e}", exc_info=True)
-                self.status = "error"
-                # raise e # Optional: propagate to main loop
+                # Erreur connexion (log court)
+                logger.error("Erreur envoi InfluxDB: Echec de connexion au serveur (Hôte inaccessible ou erreur réseau).")
+                self.set_status("error")
 
-    # --- State Management ---
+    # --- Gestion d'état ---
     def is_running(self):
         return self.running
 
@@ -158,19 +187,25 @@ class AgentCore:
 
     def set_status(self, val):
         self.status = val
+        # Notification GUI
+        if self.gui_callback:
+            try:
+                self.gui_callback("STATUS_UPDATE", val)
+            except Exception:
+                pass
 
     def trigger_update_check(self):
         threading.Thread(target=self.check_for_updates, daemon=True).start()
 
-    # --- Tufup Logic ---
+    # --- Mise à jour (Tufup) ---
     def apply_update_windows(self, src_dir, dst_dir, **kwargs):
         import subprocess
         import tempfile
         
-        # Récupération dynamique du nom de l'exécutable pour le kill/restart
+        # Nom exécutable
         exe_name = os.path.basename(sys.executable)
         
-        # SAFEGUARD: On supprime config.ini de la source de mise à jour pour ne JAMAIS écraser la config utilisateur
+        # Protection config utilisateur (suppr. config du update)
         cfg_in_update = os.path.join(src_dir, "config.ini")
         if os.path.exists(cfg_in_update):
             try:
@@ -179,8 +214,10 @@ class AgentCore:
             except Exception as e:
                 logger.warning(f"Update: Impossible de supprimer config.ini du paquet: {e}")
 
-        log_file = os.path.join(tempfile.gettempdir(), "update_agent.log")
-        # Note: Logic duplicated from original main.py, could be shared util
+        log_file = os.path.join(tempfile.gettempdir(), f"update_{int(time.time())}.log")
+        vbs_path = os.path.join(tempfile.gettempdir(), f"launch_{int(time.time())}.vbs")
+        
+        # Création batch update
         batch_content = f"""@echo off
 echo Starting update... > "{log_file}"
 timeout /t 5 /nobreak > nul
@@ -192,31 +229,45 @@ if %errorlevel% neq 0 (
     echo XCOPY FAILED %errorlevel% >> "{log_file}"
     exit /b %errorlevel%
 )
-echo Launching agent... >> "{log_file}"
-if exist "{dst_dir}\\launch_agent.bat" (
-    explorer.exe "{dst_dir}\\launch_agent.bat"
-) else (
-    explorer.exe "{dst_dir}\\{exe_name}"
+echo Launching agent via VBS... >> "{log_file}"
+if exist "{vbs_path}" (
+    cscript //nologo "{vbs_path}" >> "{log_file}" 2>&1
 )
+del "{vbs_path}"
 del "%~f0"
 """
         fd, batch_path = tempfile.mkstemp(suffix=".bat", text=True)
         with os.fdopen(fd, 'w') as f:
             f.write(batch_content)
+
+        # Lancement silencieux (VBS)
+        vbs_content = f"""
+Set WshShell = CreateObject("WScript.Shell")
+strExe = "{dst_dir}\\{exe_name}"
+If CreateObject("Scripting.FileSystemObject").FileExists("{dst_dir}\\launch_agent.bat") Then
+    strExe = "{dst_dir}\\launch_agent.bat"
+End If
+' Run(strCommand, [intWindowStyle], [bWaitOnReturn]) 
+' 0 = Hide window. 
+WshShell.Run chr(34) & strExe & chr(34), 0, False
+"""
+        with open(vbs_path, 'w') as f:
+            f.write(vbs_content)
         
         logger.info(f"Tufup: Lancement du script de mise à jour : {batch_path}")
         
         env = os.environ.copy()
         env.pop('PYTHONPATH', None)
         env.pop('PYTHONHOME', None)
-        subprocess.Popen(batch_path, shell=True, creationflags=subprocess.CREATE_NEW_CONSOLE, env=env)
+        # Sans fenêtre
+        subprocess.Popen(batch_path, shell=True, creationflags=0x08000000, env=env)
         
         logger.info("Tufup: Fermeture de l'agent pour mise à jour...")
         sys.exit(0)
 
     def check_for_updates(self):
         if not self.update_lock.acquire(blocking=False):
-             logger.warning("Tufup: Vérification déjà en cours. Ignorée.")
+             logger.warning("Vérif en cours, ignorée.")
              return
 
         try:
@@ -229,23 +280,33 @@ del "%~f0"
                 os.makedirs(metadata_dir, exist_ok=True)
                 os.makedirs(targets_dir, exist_ok=True)
                 
-                # Nettoyage préventif
+                # Nettoyage
                 self.cleanup_targets(targets_dir, keep=2)
                 
-                # Init root.json if needed
+                # Init root.json
                 root_json_path = os.path.join(metadata_dir, "root.json")
                 if not os.path.exists(root_json_path):
-                     exe_dir = os.path.dirname(sys.executable)
-                     bundled_root = os.path.join(exe_dir, "root.json")
+                     # Recherche root.json (interne/externe)
+                     if hasattr(sys, '_MEIPASS'):
+                         bundled_root = os.path.join(sys._MEIPASS, "repository", "metadata", "root.json")
+                         # Fallback simple
+                         if not os.path.exists(bundled_root):
+                             bundled_root = os.path.join(sys._MEIPASS, "root.json")
+                     else:
+                         bundled_root = os.path.join(os.path.dirname(sys.executable), "root.json")
+                     
                      if not os.path.exists(bundled_root):
-                          bundled_root = "root.json"
+                          bundled_root = "root.json" # Dev
+                          
                      if os.path.exists(bundled_root):
                           import shutil
                           try:
                                shutil.copy(bundled_root, root_json_path)
-                          except: pass
+                               logger.info(f"Tufup: root.json initialisé depuis {bundled_root}")
+                          except Exception as e:
+                               logger.error(f"Tufup: Echec copie root.json: {e}")
 
-                # Get update config
+                # Config Update
                 if "update" in self.config:
                     update_cfg = self.config["update"]
                 else:
@@ -293,9 +354,7 @@ del "%~f0"
             self.update_lock.release()
 
     def cleanup_targets(self, targets_dir, keep=2):
-        """
-        Nettoie le dossier targets pour ne garder que les 'keep' fichiers les plus récents.
-        """
+        """Conservation des N dernières mises à jour."""
         try:
             if not os.path.exists(targets_dir):
                 return
@@ -306,10 +365,10 @@ del "%~f0"
                 if os.path.isfile(full_path):
                     files.append(full_path)
             
-            # Trier par date de modification (plus récent en dernier)
+            # Tri chronologique
             files.sort(key=os.path.getmtime)
             
-            # S'il y a plus de fichiers que 'keep'
+            # Suppression anciens fichiers
             if len(files) > keep:
                 to_delete = files[:-keep]
                 for f in to_delete:
@@ -322,13 +381,13 @@ del "%~f0"
             logger.error(f"Erreur lors du nettoyage des targets: {e}")
 
     def run_loop(self):
-        # Initial check
+        # Vérif initiale
         threading.Thread(target=self.check_for_updates, daemon=True).start()
         last_update_check = time.time()
 
         while True:
             try:
-                # Hourly check
+                # Vérif horaire
                 if time.time() - last_update_check >= 3600:
                      logger.info("Check update périodique...")
                      threading.Thread(target=self.check_for_updates, daemon=True).start()
@@ -337,10 +396,6 @@ del "%~f0"
                 if self.running:
                     data = self.collect_all_data()
                     self.send_to_influx(data)
-                    # We don't have direct access to GUI here efficiently to update icon 'running' every 10s
-                    # But GUI is polling or event based?
-                    # The original code updated icon every loop 'update_icon("running")'.
-                    # We can use a callback or assume GUI manages its state based on self.running
                     pass 
                 
             except Exception as e:

@@ -1,0 +1,1000 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 2,
+  "links": [],
+  "panels": [
+    {
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "id": 16,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "<div style=\"display: flex; justify-content: space-between; align-items: center;\">\n  <a href=\"/d/794629d3-7696-436d-8ab5-9875d8218bc8/main\" style=\"background: #1f77b4; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;\">← Retour au Dashboard Principal</a>\n</div>\n</br>\n<div style=\"display: flex; justify-content: space-between; align-items: center;\">\n  <a href=\"/d/43cb4335-0db6-4be7-9ff4-cf3e7652570f/tableau-general\" style=\"background: #1f77b4; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;\">← Tableau Général</a>\n</div>",
+        "mode": "html"
+      },
+      "pluginVersion": "12.0.1",
+      "title": "",
+      "transparent": true,
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "deoffyxtkywaoa"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "links": [
+            {
+              "title": "Ouvrir Anydesk",
+              "url": "anydesk://${__data.fields.anydesk_id}"
+            }
+          ],
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text"
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
+      "id": 17,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "aenfalcuf083ka"
+          },
+          "query": "srcA = from(bucket: \"BucketMonitoring\")\r\n  |> range(start: -15m)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"anydesk\" and r[\"_field\"] == \"anydesk_id\")\r\n\r\nsrcB = from(bucket: \"monitoring\")\r\n  |> range(start: -15m)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"pc\" and r[\"metric\"] == \"anydesk\" and r[\"_field\"] == \"anydesk_id\")\r\n\r\nunion(tables: [srcA, srcB])\r\n  |> last()\r\n  |> map(fn: (r) => ({ _value: r._value })) \r\n  |> rename(columns: {_value: \"anydesk_id\"})",
+          "refId": "A"
+        }
+      ],
+      "title": "ANYDESK",
+      "transparent": true,
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "deoffyxtkywaoa"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "links": [],
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text"
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
+      "id": 21,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "aenfalcuf083ka"
+          },
+          "query": "// Source 1 : Nouveau Bucket\r\nsrc1 = from(bucket: \"BucketMonitoring\")\r\n  |> range(start: -6h)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"system\") \r\n  |> last()\r\n  |> group() \r\n  |> map(fn: (r) => ({ _value: r.company })) \r\n  |> keep(columns: [\"_value\"])\r\n\r\n// Source 2 : Ancien Bucket\r\nsrc2 = from(bucket: \"monitoring\")\r\n  |> range(start: -6h)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"pc\")\r\n  |> last()\r\n  |> group()\r\n  |> map(fn: (r) => ({ _value: r.company }))\r\n  |> keep(columns: [\"_value\"])\r\n\r\n// Fusion\r\nunion(tables: [src1, src2])\r\n  |> group() \r\n  |> distinct(column: \"_value\")\r\n  |> limit(n: 1) ",
+          "refId": "A"
+        }
+      ],
+      "title": "COMPANY",
+      "transparent": true,
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "deoffyxtkywaoa"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "opacity",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": 3600000,
+            "lineInterpolation": "smooth",
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "displayName": "${__field.name}",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 6
+      },
+      "id": 14,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.0.1",
+      "targets": [
+        {
+          "query": "data = from(bucket: \"BucketMonitoring\")\r\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) =>\r\n    r[\"_measurement\"] == \"diskio\" and\r\n    r[\"_field\"] == \"read_bytes_sec\"\r\n  )\r\n\r\ntop5 = data\r\n  |> range(start: -5m)\r\n  |> group(columns: [\"host\", \"device\"])\r\n  |> mean()\r\n  |> group()\r\n  |> sort(columns: [\"_value\"], desc: true)\r\n  |> keep(columns: [\"host\", \"device\"])\r\n\r\njoin(tables: {d: data, t: top5}, on: [\"host\", \"device\"])\r\n  |> map(fn: (r) => ({ r with display_name: r.host + \" - \" + r.device }))\r\n  \r\n  |> pivot(rowKey:[\"_time\", \"host\"], columnKey: [\"display_name\"], valueColumn: \"_value\")",
+          "refId": "A"
+        }
+      ],
+      "title": "BYTES WRITE",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "deoffyxtkywaoa"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 25,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "%"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 6
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "hidden",
+          "placement": "right",
+          "showLegend": false
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "aenfalcuf083ka"
+          },
+          "query": "// Source A : Nouveau Bucket\r\nsrcA = from(bucket: \"BucketMonitoring\")\r\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cpu\" and r[\"_field\"] == \"cpu_percent\")\r\n\r\n// Source B : Ancien Bucket\r\nsrcB = from(bucket: \"monitoring\")\r\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"pc\" and r[\"metric\"] == \"cpu\" and r[\"_field\"] == \"cpu_percent\")\r\n\r\n// Fusion\r\nunion(tables: [srcA, srcB])\r\n  |> group(columns: [\"_field\", \"host\"]) // On regroupe pour fusionner les points au même timestamp\r\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\r\n  |> yield(name: \"mean\")",
+          "refId": "A"
+        }
+      ],
+      "title": "CPU",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "deoffyxtkywaoa"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "displayName": "${__field.name}",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 6
+      },
+      "id": 15,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.0.1",
+      "targets": [
+        {
+          "query": "// Source A\r\nsrcA = from(bucket: \"BucketMonitoring\")\r\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"network\")\r\n  |> filter(fn: (r) => r[\"_field\"] == \"bytes_recv\" or r[\"_field\"] == \"bytes_sent\")\r\n\r\n// Source B (Structure différente avec metric=\"network\")\r\nsrcB = from(bucket: \"monitoring\")\r\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"pc\" and r[\"metric\"] == \"network\")\r\n  |> filter(fn: (r) => r[\"_field\"] == \"bytes_recv\" or r[\"_field\"] == \"bytes_sent\")\r\n\r\nunion(tables: [srcA, srcB])\r\n  |> group(columns: [\"_field\", \"host\"]) // On regroupe pour fusionner les points au même timestamp\r\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\r\n  |> yield(name: \"mean\")",
+          "refId": "A"
+        }
+      ],
+      "title": "NETWORK",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "deoffyxtkywaoa"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "displayName": "${__field.name}",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 14
+      },
+      "id": 13,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.0.1",
+      "targets": [
+        {
+          "query": "data = from(bucket: \"BucketMonitoring\")\r\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) =>\r\n    r[\"_measurement\"] == \"diskio\" and\r\n    r[\"_field\"] == \"write_bytes_sec\"\r\n  )\r\n\r\ntop5 = data\r\n  |> range(start: -5m)\r\n  |> group(columns: [\"host\", \"device\"])\r\n  |> mean()\r\n  |> group()\r\n  |> sort(columns: [\"_value\"], desc: true)\r\n  |> keep(columns: [\"host\", \"device\"])\r\n\r\njoin(tables: {d: data, t: top5}, on: [\"host\", \"device\"])\r\n  |> map(fn: (r) => ({ r with display_name: r.host + \" - \" + r.device }))\r\n  \r\n  |> pivot(rowKey:[\"_time\", \"host\"], columnKey: [\"display_name\"], valueColumn: \"_value\")",
+          "refId": "A"
+        }
+      ],
+      "title": "BYTES READ",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "deoffyxtkywaoa"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 25,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "%"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 14
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "hidden",
+          "placement": "right",
+          "showLegend": false
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "aenfalcuf083ka"
+          },
+          "query": "srcA = from(bucket: \"BucketMonitoring\")\r\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"memory\" and r[\"_field\"] == \"memory_percent\")\r\n\r\nsrcB = from(bucket: \"monitoring\")\r\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"pc\" and r[\"metric\"] == \"memory\" and r[\"_field\"] == \"memory_percent\")\r\n\r\nunion(tables: [srcA, srcB])\r\n  |> group(columns: [\"_field\", \"host\"]) // On regroupe pour fusionner les points au même timestamp\r\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\r\n  |> yield(name: \"mean\")",
+          "refId": "A"
+        }
+      ],
+      "title": "RAM",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "deoffyxtkywaoa"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "continuous-GrYlRd"
+          },
+          "mappings": [],
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "%"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 14
+      },
+      "id": 11,
+      "options": {
+        "displayMode": "lcd",
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
+      },
+      "pluginVersion": "12.0.1",
+      "targets": [
+        {
+          "query": "srcA = from(bucket: \"BucketMonitoring\")\r\n  |> range(start: -10m)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"disk\" and r[\"_field\"] == \"percent\")\r\n  |> last()\r\n  |> map(fn: (r) => ({ r with disk_name: r.mountpoint })) \r\n\r\nsrcB = from(bucket: \"monitoring\")\r\n  |> range(start: -10m)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"pc\" and r[\"metric\"] == \"disk\" and (r[\"_field\"] == \"disk_percent\" or r[\"_field\"] == \"percent\"))\r\n  |> last()\r\n  |> map(fn: (r) => ({ r with disk_name: r.disk })) // Normalisation nom\r\n\r\nunion(tables: [srcA, srcB])\r\n  |> group(columns: [\"disk_name\", \"host\"]) \r\n  |> last() // Garde uniquement la mesure la plus fraîche pour ce disque précis\r\n  |> keep(columns: [\"_value\", \"disk_name\", \"host\"])\r\n  |> group()\r\n  |> sort(columns: [\"_value\"], desc: true)",
+          "refId": "A"
+        }
+      ],
+      "title": "DISK",
+      "transformations": [
+        {
+          "id": "sortBy",
+          "options": {}
+        }
+      ],
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "uid": "deoffyxtkywaoa"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "m"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 4,
+        "x": 0,
+        "y": 22
+      },
+      "id": 19,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.0.1",
+      "targets": [
+        {
+          "query": "srcA = from(bucket: \"BucketMonitoring\")\r\n  |> range(start: -15m)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"system\" and r[\"_field\"] == \"uptime_minutes\")\r\n\r\nsrcB = from(bucket: \"monitoring\")\r\n  |> range(start: -15m)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"pc\" and r[\"_field\"] == \"uptime_minutes\")\r\n\r\nunion(tables: [srcA, srcB])\r\n  // 1. On force le regroupement par champ pour fusionner les deux sources\r\n  |> group(columns: [\"_field\", \"host\"]) \r\n  // 2. On prend la valeur la plus récente parmi les deux buckets\r\n  |> last()\r\n  // 3. On dégroupe pour l'affichage dans Grafana\r\n  |> group()",
+          "refId": "A"
+        }
+      ],
+      "title": "UPTIME",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "deoffyxtkywaoa"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 6
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 4,
+        "x": 4,
+        "y": 22
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "aenfalcuf083ka"
+          },
+          "query": "srcA = from(bucket: \"BucketMonitoring\")\r\n  |> range(start: -15m)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"updates\" and r[\"_field\"] == \"pending_updates\")\r\n\r\nsrcB = from(bucket: \"monitoring\")\r\n  |> range(start: -15m)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"pc\" and r[\"_field\"] == \"pending_updates\")\r\n\r\nunion(tables: [srcA, srcB])\r\n  // 1. On force le regroupement par champ pour fusionner les deux sources\r\n  |> group(columns: [\"_field\", \"host\"]) \r\n  // 2. On prend la valeur la plus récente parmi les deux buckets\r\n  |> last()\r\n  // 3. On dégroupe pour l'affichage dans Grafana\r\n  |> group()",
+          "refId": "A"
+        }
+      ],
+      "title": "UPDATES",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "deoffyxtkywaoa"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red"
+              },
+              {
+                "color": "orange",
+                "value": 8589934592
+              },
+              {
+                "color": "green",
+                "value": 17179869184
+              }
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 22
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.0.1",
+      "targets": [
+        {
+          "query": "srcA = from(bucket: \"BucketMonitoring\")\r\n  |> range(start: -15m)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"memory\" and r[\"_field\"] == \"memory_total\")\r\n\r\nsrcB = from(bucket: \"monitoring\")\r\n  |> range(start: -15m)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"pc\" and r[\"_field\"] == \"memory_total\")\r\n\r\nunion(tables: [srcA, srcB])\r\n  // 1. On force le regroupement par champ pour fusionner les deux sources\r\n  |> group(columns: [\"_field\", \"host\"]) \r\n  // 2. On prend la valeur la plus récente parmi les deux buckets\r\n  |> last()\r\n\r\n  |> group()",
+          "refId": "A"
+        }
+      ],
+      "title": "RAM CAPACITY",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "deoffyxtkywaoa"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "displayName": "${__field.labels.logical_name}://",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 22
+      },
+      "id": 12,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.0.1",
+      "targets": [
+        {
+          "query": "// Source 1 : Nouveau Bucket (BucketMonitoring)\r\nsrcA = from(bucket: \"BucketMonitoring\")\r\n  |> range(start: -15m)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"disk\" and r[\"_field\"] == \"total\")\r\n  |> last()\r\n  // CORRECTION ICI : On utilise \"mountpoint\" au lieu de \"device\" pour avoir C:\r\n  |> map(fn: (r) => ({ r with logical_name: r.mountpoint })) \r\n\r\n// Source 2 : Ancien Bucket (monitoring)\r\nsrcB = from(bucket: \"monitoring\")\r\n  |> range(start: -15m)\r\n  |> filter(fn: (r) => r[\"host\"] == \"${host}\")\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"pc\" and r[\"metric\"] == \"disk\" and r[\"_field\"] == \"total\")\r\n  |> last()\r\n  |> map(fn: (r) => ({ r with logical_name: r.disk })) \r\n\r\n// Fusion\r\nunion(tables: [srcA, srcB])\r\n  |> group(columns: [\"logical_name\"]) \r\n  |> keep(columns: [\"_value\", \"logical_name\"])\r\n  // On laisse groupé pour que Grafana affiche bien une valeur par disque",
+          "refId": "A"
+        }
+      ],
+      "title": "DISK CAPACITY",
+      "type": "stat"
+    }
+  ],
+  "preload": false,
+  "schemaVersion": 41,
+  "tags": [],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": "CLIENT-RDS-AUTOONE",
+          "value": "CLIENT-RDS-AUTOONE"
+        },
+        "definition": "import \"influxdata/influxdb/schema\"\r\n\r\n// Récupère les hosts du bucket 1 filtrés par la variable company\r\nv1 = schema.tagValues(\r\n  bucket: \"BucketMonitoring\", \r\n  tag: \"host\", \r\n  predicate: (r) => r.company =~ /^${company:regex}$/\r\n)\r\n\r\n// Récupère les hosts du bucket 2 filtrés par la variable company\r\nv2 = schema.tagValues(\r\n  bucket: \"monitoring\", \r\n  tag: \"host\", \r\n  predicate: (r) => r.company =~ /^${company:regex}$/\r\n)\r\n\r\nunion(tables: [v1, v2])\r\n  |> keep(columns: [\"_value\"])\r\n  |> distinct()\r\n  |> sort()",
+        "includeAll": false,
+        "label": "host",
+        "name": "host",
+        "options": [],
+        "query": {
+          "query": "import \"influxdata/influxdb/schema\"\r\n\r\n// Récupère les hosts du bucket 1 filtrés par la variable company\r\nv1 = schema.tagValues(\r\n  bucket: \"BucketMonitoring\", \r\n  tag: \"host\", \r\n  predicate: (r) => r.company =~ /^${company:regex}$/\r\n)\r\n\r\n// Récupère les hosts du bucket 2 filtrés par la variable company\r\nv2 = schema.tagValues(\r\n  bucket: \"monitoring\", \r\n  tag: \"host\", \r\n  predicate: (r) => r.company =~ /^${company:regex}$/\r\n)\r\n\r\nunion(tables: [v1, v2])\r\n  |> keep(columns: [\"_value\"])\r\n  |> distinct()\r\n  |> sort()"
+        },
+        "refresh": 1,
+        "regex": "",
+        "type": "query"
+      },
+      {
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "definition": "import \"influxdata/influxdb/schema\"\r\n\r\nv1 = schema.tagValues(bucket: \"BucketMonitoring\", tag: \"company\")\r\nv2 = schema.tagValues(bucket: \"monitoring\", tag: \"company\")\r\n\r\nunion(tables: [v1, v2])\r\n  |> keep(columns: [\"_value\"])\r\n  |> distinct()\r\n  |> sort()",
+        "includeAll": true,
+        "label": "company",
+        "multi": true,
+        "name": "company",
+        "options": [],
+        "query": {
+          "query": "import \"influxdata/influxdb/schema\"\r\n\r\nv1 = schema.tagValues(bucket: \"BucketMonitoring\", tag: \"company\")\r\nv2 = schema.tagValues(bucket: \"monitoring\", tag: \"company\")\r\n\r\nunion(tables: [v1, v2])\r\n  |> keep(columns: [\"_value\"])\r\n  |> distinct()\r\n  |> sort()"
+        },
+        "refresh": 1,
+        "regex": "",
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Detail-pc",
+  "uid": "80c88f0f-d29e-4f92-a6cd-21c6c4cfb065",
+  "version": 57
+}

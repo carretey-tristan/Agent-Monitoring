@@ -21,7 +21,7 @@ class AgentGUI:
     def update_icon(self, state):
         current_status = self.agent.get_status()
         if state == current_status and self.icon is not None:
-             # Si l'icône est déjà bonne on ne fait rien, sauf si c'est le premier lancement
+             # Ignore si l'état est inchangé
              pass
 
         try:
@@ -52,32 +52,25 @@ class AgentGUI:
         os._exit(0)
 
     def on_edit_config(self, icon_obj, item):
-        # Utilisation du nouveau script chiffre.py pour éditer la configuration
+        # Lance l'éditeur de configuration avec le flag --configure
         try:
-            # On suppose que chiffre.py (ou .exe) est dans le même dossier
-            base_dir = os.path.dirname(sys.argv[0])
-            editor_script = os.path.join(base_dir, "chiffre.py")
-            if not os.path.exists(editor_script):
-                 editor_script = os.path.join(base_dir, "chiffre.exe")
+            cmd = [sys.executable, "--configure"]
+            # Gestion du mode développement
+            if not getattr(sys, 'frozen', False):
+                 base_dir = os.path.dirname(sys.argv[0])
+                 script_path = os.path.join(base_dir, "main.py")
+                 cmd = [sys.executable, script_path, "--configure"]
             
-            if os.path.exists(editor_script):
-                 if editor_script.endswith(".py"):
-                      subprocess.Popen(["python", editor_script])
-                 else:
-                      subprocess.Popen([editor_script])
-                 logger.info("Lancement de l'éditeur de configuration.")
-            else:
-                 # Fallback : ouverture du fichier texte
-                 os.startfile(CONFIG_PATH)
-                 logger.info("Ouverture du fichier de configuration (texte).")
+            subprocess.Popen(cmd)
+            logger.info("Lancement de l'éditeur de configuration (mode --configure).")
 
         except Exception as e:
             logger.error(f"Impossible d'ouvrir l'éditeur : {e}")
 
-    def on_check_updates_click(self, icon_obj, item):
+    def on_check_updates_click(self):
          self.agent.trigger_update_check()
 
-    def on_restart(self, icon_obj, item):
+    def on_restart(self, icon_obj):
         logger.info("Redémarrage manuel de l'agent…")
         icon_obj.stop()
         
@@ -93,7 +86,15 @@ class AgentGUI:
         sys.exit(0)
 
     def setup_tray(self):
-        image = Image.open(ICON_PATHS["running"])
+        # État initial de l'icône selon le statut de l'agent
+        initial_status = self.agent.get_status() or "running"
+        icon_path = ICON_PATHS.get(initial_status, ICON_PATHS["running"])
+        
+        try:
+             image = Image.open(icon_path)
+        except:
+             image = Image.open(ICON_PATHS["running"])
+
         self.icon = Icon("agent_monitoring", image, "Agent de Monitoring", menu=Menu(
             MenuItem("⏯ Démarrer / Pause", self.on_toggle_run),
             MenuItem("📥 Rechercher une mise à jour", self.on_check_updates_click),
@@ -103,12 +104,19 @@ class AgentGUI:
             MenuItem("❌ Quitter", self.on_quit)
         ))
         
-        # Initial status update
+        # Mise à jour initiale
         self.agent.set_gui_callback(self.notify_update)
         self.icon.run()
 
     def notify_update(self, title, message):
-        if self.icon:
+        if not self.icon:
+            return
+
+        if title == "STATUS_UPDATE":
+             # Mise à jour silencieuse
+             self.update_icon(message)
+        else:
+            # Notification classique
             self.icon.notify(message, title)
 
 # --- Fonctions utilitaires (Dialogues) ---
@@ -145,8 +153,7 @@ def get_password_from_user() -> str:
     sys.exit(1)
 
 def ensure_general_section_gui(config_parser, config_path):
-    # Logique GUI pour demander les infos manquantes
-    # Cette fonction est appelée si des champs sont manquants dans config.ini
+    # Demande les informations manquantes via l'interface graphique
     
     root = tk.Tk()
     root.withdraw()

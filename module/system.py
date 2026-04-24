@@ -1,7 +1,7 @@
 """
 Module d'informations système
 -----------------------------
-Récupère les informations générales sur la machine (OS, Uptime, Hostname).
+Récupère les informations générales sur la machine (OS, Uptime).
 
 Exposed Functions:
 - get_data(): Retourne les infos système statiques et dynamiques.
@@ -12,17 +12,30 @@ import psutil
 from datetime import datetime
 import platform
 
+import sys
+import os
+
+# Ajout du dossier parent au path pour importer config_manager si nécessaire
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
+
+try:
+    from config_manager import VERSION
+except ImportError:
+    VERSION = "unknown"
+
 def get_data():
     """
     Récupère les infos système.
 
     Returns:
         dict:
-            - hostname (str): Nom de la machine
             - uptime_minutes (float): Temps allumé en minutes
-            - version (str): Version de l'OS (ex: 10.0.19045)
             - release (int): Release majeure (ex: 10)
             - build_number (int): Build spécifique (ex: 19045)
+            - agent_version (str): Version de l'agent (ex: 1.0.23)
     """
     try:
         # Récupération du temps de démarrage et calcul de l'uptime
@@ -37,11 +50,10 @@ def get_data():
         build_number = int(version_parts[2]) if len(version_parts) >= 3 and version_parts[2].isdigit() else None
         release = uname.release.replace("Server", "").strip()
         return {
-            "hostname": socket.gethostname(),
             "uptime_minutes": uptime.total_seconds() // 60,
-            "release": int(release),
-            "version": uname.version,               
-            "build_number": build_number            
+            "release": int(release),       
+            "build_number": build_number,
+            "agent_version": VERSION
         }
 
     except Exception as e:

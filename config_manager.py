@@ -2,20 +2,20 @@ import sys
 import configparser
 import logging
 import os
+import json
 from cryptography.fernet import Fernet
 from security import generate_key
 
 logger = logging.getLogger("agent")
 
-# Définition du dossier de base (absolu)
+# Dossier de base
 if getattr(sys, 'frozen', False):
-    # Si on est dans un .exe (PyInstaller)
+    # Exécutable PyInstaller
     BASE_DIR = os.path.dirname(sys.executable)
 else:
-    # Si on est en script .py
+    # Script Python
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# Constants with absolute paths
+# Chemins absolus
 CONFIG_PATH = os.path.join(BASE_DIR, "config.ini")
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 LOG_FILE = os.path.join(LOG_DIR, "agent.log")
@@ -26,7 +26,7 @@ ICON_PATHS = {
     "error": os.path.join(BASE_DIR, "images", "logo_monitoring_broke.png")
 }
 APP_NAME = "agent"
-VERSION = "1.0.11"
+VERSION = "1.1.0"
 
 def decrypt_ini(file_path: str, key: bytes):
     config = configparser.ConfigParser()
@@ -63,10 +63,41 @@ def validate_password(password: str, config_path: str = CONFIG_PATH) -> bool:
         test_section = encrypted_sections[0]
         for option in config[test_section]:
             config[test_section][option]
-            # On tente de déchiffrer la première valeur trouvée
+            # Test déchiffrement
             fernet.decrypt(config[test_section][option].encode()).decode()
             break
         
         return True
     except Exception:
+        return False
+
+def validate_config_content(config) -> bool:
+    """Vérifie que la configuration contient les champs requis et non vides."""
+    try:
+        # 1. Section General
+        if not config.has_section("general"):
+            return False
+        
+        name = config.get("general", "name", fallback="").strip()
+        company = config.get("general", "company", fallback="").strip()
+        
+        if not name or not company:
+            return False
+            
+        # 2. Section Disk
+        if not config.has_section("disk"):
+            return False
+            
+        paths = config.get("disk", "paths", fallback="[]")
+        try:
+            loaded_paths = json.loads(paths)
+            # Check if it's a list and not empty
+            if not isinstance(loaded_paths, list) or len(loaded_paths) == 0:
+                return False
+        except json.JSONDecodeError:
+            return False
+            
+        return True
+    except Exception as e:
+        logger.error(f"Erreur validation contenu config: {e}")
         return False

@@ -1,0 +1,336 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 20,
+  "links": [],
+  "panels": [
+    {
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "<a href=\"/d/794629d3-7696-436d-8ab5-9875d8218bc8/main\" style=\"background: #1f77b4; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;\">\n  ← Retour au Dashboard Principal\n</a>",
+        "mode": "markdown"
+      },
+      "pluginVersion": "12.0.1",
+      "title": "Return main",
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "deoffyxtkywaoa"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "links": [
+            {
+              "title": "détail de ${__data.fields.host_link}",
+              "url": "/d/80c88f0f-d29e-4f92-a6cd-21c6c4cfb065?var-host=${__data.fields.host_link}\r\n"
+            }
+          ],
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "\\b\\w*disk\\w*\\b"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "%"
+              },
+              {
+                "id": "displayName",
+                "value": "${__data.fields.host}"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "recv|sent|bytes|write|read"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "displayName",
+                "value": "${__data.fields.host}"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "\\b\\w*update\\w*\\b"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "${__data.fields.host}"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green"
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 8
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "\\b\\w*uptime\\w*\\b"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "m"
+              },
+              {
+                "id": "displayName",
+                "value": "${__data.fields.host}"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "\\b\\w*cpu\\w*\\b"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green"
+                    },
+                    {
+                      "color": "orange",
+                      "value": 50
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "unit",
+                "value": "%"
+              },
+              {
+                "id": "displayName",
+                "value": "${__data.fields.host}"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "\\b\\w*ram\\w*\\b"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "%"
+              },
+              {
+                "id": "displayName",
+                "value": "${__data.fields.host}"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 15,
+        "w": 24,
+        "x": 0,
+        "y": 3
+      },
+      "id": 1,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "limit": 5000,
+          "values": true
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "aenfalcuf083ka"
+          },
+          "query": "target = \"${type_donnee}\"\r\n\r\n// --- SOURCE 1 : ANCIEN BUCKET (monitoring) ---\r\nsrc1 = from(bucket: \"monitoring\")\r\n  |> range(start: -5m) \r\n  |> filter(fn: (r) => \r\n    (target == \"cpu\" and r[\"_measurement\"] == \"pc\" and r[\"_field\"] == \"cpu_percent\") or\r\n    (target == \"ram\" and r[\"_measurement\"] == \"pc\" and r[\"_field\"] == \"memory_percent\") or\r\n    (target == \"disk\" and r[\"_measurement\"] == \"pc\" and r[\"_field\"] == \"percent\") or \r\n    (target == \"read\" and r[\"_measurement\"] == \"pc\" and r[\"_field\"] == \"read_bytes\") or\r\n    (target == \"write\" and r[\"_measurement\"] == \"pc\" and r[\"_field\"] == \"write_bytes\") or\r\n    (target == \"recv\" and r[\"_measurement\"] == \"pc\" and r[\"_field\"] == \"bytes_recv\") or\r\n    (target == \"sent\" and r[\"_measurement\"] == \"pc\" and r[\"_field\"] == \"bytes_sent\") or\r\n    (target == \"updates\" and r[\"_measurement\"] == \"pc\" and r[\"_field\"] == \"pending_updates\") or\r\n    (target == \"uptime\" and r[\"_measurement\"] == \"pc\" and r[\"_field\"] == \"uptime_minutes\")\r\n  )\r\n  |> last()\r\n  |> map(fn: (r) => ({ \r\n      r with \r\n      host_link: r.host, // Colonne propre pour le Data Link\r\n      host: if target == \"disk\" or target == \"read\" or target == \"write\" \r\n           then r.host + \" - \" + r.disk + \"://\" \r\n           else r.host \r\n  }))\r\n\r\n// --- SOURCE 2 : NOUVEAU BUCKET (BucketMonitoring) ---\r\nsrc2 = from(bucket: \"BucketMonitoring\")\r\n  |> range(start: -5m)\r\n  |> filter(fn: (r) => \r\n    (target == \"cpu\" and r[\"_measurement\"] == \"cpu\" and r[\"_field\"] == \"cpu_percent\") or\r\n    (target == \"ram\" and r[\"_measurement\"] == \"memory\" and r[\"_field\"] == \"memory_percent\") or\r\n    (target == \"disk\" and r[\"_measurement\"] == \"disk\" and (r[\"_field\"] == \"used_percent\" or r[\"_field\"] == \"percent\")) or \r\n    (target == \"read\" and r[\"_measurement\"] == \"diskio\" and (r[\"_field\"] == \"read_bytes_sec\" or r[\"_field\"] == \"read_bytes\")) or\r\n    (target == \"write\" and r[\"_measurement\"] == \"diskio\" and (r[\"_field\"] == \"write_bytes_sec\" or r[\"_field\"] == \"write_bytes\")) or\r\n    (target == \"recv\" and r[\"_measurement\"] == \"network\" and r[\"_field\"] == \"bytes_recv\") or\r\n    (target == \"sent\" and r[\"_measurement\"] == \"network\" and r[\"_field\"] == \"bytes_sent\") or\r\n    (target == \"updates\" and r[\"_measurement\"] == \"updates\" and r[\"_field\"] == \"pending_updates\") or\r\n    (target == \"uptime\" and r[\"_measurement\"] == \"system\" and r[\"_field\"] == \"uptime_minutes\")\r\n  )\r\n  |> last()\r\n  |> map(fn: (r) => ({ \r\n      r with \r\n      host_link: r.host, // Colonne propre pour le Data Link\r\n      host: if target == \"disk\" or target == \"read\" or target == \"write\" \r\n           then r.host + \" - \" + (if exists r.mountpoint then r.mountpoint else \"\") + \" (\" + r.device + \")\" \r\n           else r.host \r\n  }))\r\n\r\n// --- FUSION ET RENAME ---\r\nunion(tables: [src1, src2])\r\n  |> group() \r\n  // On prépare le nom technique du champ pour les Overrides\r\n  |> map(fn: (r) => ({ r with _field: if target == \"disk\" then \"usage_disk\" else target })) \r\n  |> sort(columns: [\"_value\"], desc: true)\r\n  |> limit(n: ${limit})\r\n  |> rename(columns: {\"_value\": if target == \"disk\" then \"usage_disk\" else target})",
+          "refId": "A"
+        }
+      ],
+      "title": "${type_donnee} ",
+      "type": "stat"
+    }
+  ],
+  "preload": false,
+  "schemaVersion": 41,
+  "tags": [],
+  "templating": {
+    "list": [
+      {
+        "allowCustomValue": false,
+        "current": {
+          "text": "cpu",
+          "value": "cpu"
+        },
+        "description": "",
+        "label": "type_donnee",
+        "name": "type_donnee",
+        "options": [
+          {
+            "selected": true,
+            "text": "CPU",
+            "value": "cpu"
+          },
+          {
+            "selected": false,
+            "text": "RAM",
+            "value": "ram"
+          },
+          {
+            "selected": false,
+            "text": "Download",
+            "value": "recv"
+          },
+          {
+            "selected": false,
+            "text": "Upload",
+            "value": "sent"
+          },
+          {
+            "selected": false,
+            "text": "Mises à jour",
+            "value": "updates"
+          },
+          {
+            "selected": false,
+            "text": "Uptime",
+            "value": "uptime"
+          },
+          {
+            "selected": false,
+            "text": "Disque",
+            "value": "disk"
+          },
+          {
+            "selected": false,
+            "text": "Lecture Disque",
+            "value": "read"
+          },
+          {
+            "selected": false,
+            "text": "Ecriture Disque",
+            "value": "write"
+          }
+        ],
+        "query": "CPU : cpu, RAM : ram, Download : recv, Upload : sent, Mises à jour : updates, Uptime : uptime, Disque : disk, Lecture Disque : read, Ecriture Disque : write",
+        "type": "custom"
+      },
+      {
+        "current": {
+          "text": "100000",
+          "value": "100000"
+        },
+        "name": "limit",
+        "options": [
+          {
+            "selected": true,
+            "text": "Tout",
+            "value": "100000"
+          }
+        ],
+        "query": "Tout : 100000",
+        "type": "custom"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Spécifique metric",
+  "uid": "1ed7f16f-700a-42b5-b576-63d7762f41a3",
+  "version": 7
+}

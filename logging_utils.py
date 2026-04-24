@@ -39,7 +39,7 @@ def setup_logger(log_file='agent.log'):
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
 
-    # Capturer aussi les logs de Tufup
+    # Capture logs Tufup
     tufup_logger = logging.getLogger("tufup")
     tufup_logger.setLevel(logging.INFO)
     tufup_logger.addHandler(file_handler)

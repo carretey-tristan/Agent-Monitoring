@@ -16,14 +16,12 @@ def get_data():
     Returns:
         dict:
             - memory_total (int): Mémoire totale en octets
-            - memory_free (int): Mémoire disponible en octets
             - memory_percent (float): Pourcentage d'utilisation
     """
     try:
         memory = psutil.virtual_memory()
         return {
             "memory_total": memory.total,
-            "memory_free": memory.free,
             "memory_percent": memory.percent
         }
     except Exception as e:

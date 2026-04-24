@@ -32,19 +32,38 @@ def generate_key(password: str) -> bytes:
 
 def set_registry_acl() -> None:
     try:
-        cmd = [
-            "icacls",
-            r"HKLM\SOFTWARE\MonitoringAgent",
-            "/inheritance:r",
-            "/grant", "SYSTEM:F",
-            "/grant", "Administrators:F"
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+        # Script PS (ACLs registre)
+        # S-1-5-18 : SYSTEM
+        # S-1-5-32-544 : Admins
+        # S-1-5-32-545 : Users (Builtin)
+        ps_script = r"""
+        $path = "HKLM:\SOFTWARE\MonitoringAgent";
+        $acl = Get-Acl $path;
+        $acl.SetAccessRuleProtection($true, $false);
+        $systemSid = New-Object System.Security.Principal.SecurityIdentifier("S-1-5-18");
+        $adminSid = New-Object System.Security.Principal.SecurityIdentifier("S-1-5-32-544");
+        $usersSid = New-Object System.Security.Principal.SecurityIdentifier("S-1-5-32-545");
+
+
+        $ruleSystem = New-Object System.Security.AccessControl.RegistryAccessRule($systemSid, "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow");
+        $ruleAdmin = New-Object System.Security.AccessControl.RegistryAccessRule($adminSid, "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow");
+        $ruleUsers = New-Object System.Security.AccessControl.RegistryAccessRule($usersSid, "ReadKey", "ContainerInherit,ObjectInherit", "None", "Allow");
+
+        $acl.SetAccessRule($ruleSystem);
+        $acl.AddAccessRule($ruleAdmin);
+        $acl.AddAccessRule($ruleUsers);
+        Set-Acl $path $acl;
+        """
+        
+        cmd = ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", ps_script]
+        
+        # Sans fenêtre
+        result = subprocess.run(cmd, capture_output=True, text=True, creationflags=0x08000000)
 
         if result.returncode != 0:
-            logger.error(f"Erreur icacls ({result.returncode}) : {result.stderr.strip()}")
+            logger.error(f"Erreur PowerShell Set-Acl ({result.returncode}) : {result.stderr.strip()}")
         else:
-            logger.info("ACL du registre restreintes à SYSTEM et Administrators.")
+            logger.info("ACL du registre mises à jour (PowerShell).")
     except Exception as e:
         logger.error(f"Exception lors de la mise à jour des ACL : {e}")
 
@@ -107,10 +126,7 @@ def is_first_run() -> bool:
         return True
 
 def already_running(mutex_name="Global\\MonitoringAgentMutex"):
-    """
-    Crée un mutex global Windows.
-    Retourne True si une instance existe déjà.
-    """
+    """Création Mutex Global (Instance unique)"""
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     CreateMutexW = kernel32.CreateMutexW
     CreateMutexW.argtypes = [

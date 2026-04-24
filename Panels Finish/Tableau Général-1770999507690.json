@@ -1,0 +1,318 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 11,
+  "links": [],
+  "panels": [
+    {
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 2,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 3,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "<div style=\"display: flex; justify-content: space-between; align-items: center; width: 100%;\">\n  <a href=\"/d/794629d3-7696-436d-8ab5-9875d8218bc8/main\" style=\"background: #1f77b4; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;\">← Retour au Dashboard Principal</a>\n</div>",
+        "mode": "html"
+      },
+      "pluginVersion": "12.0.1",
+      "title": "",
+      "transparent": true,
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "deoffyxtkywaoa"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "links": [
+            {
+              "title": "detail de ${__data.fields.host}",
+              "url": "/d/80c88f0f-d29e-4f92-a6cd-21c6c4cfb065?var-host=${__data.fields.host}"
+            }
+          ],
+          "mappings": [
+            {
+              "options": {
+                "-1": {
+                  "index": 0,
+                  "text": "Restart"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/(CPU|RAM|Percent|[a-zA-Z]:\\/\\/)/i"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "%"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "anydesk_id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "${__data.fields.anydesk_id}",
+                    "url": "anydesk://${__data.fields.anydesk_id}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/(Download|Upload|Disk\\s\\d+\\s(Lecture|Ecriture))/i"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "binBps"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/(uptime)/i"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "m"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/(free|total|capacity)/i"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 26,
+        "w": 24,
+        "x": 0,
+        "y": 2
+      },
+      "id": 1,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "frameIndex": 1,
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "Version Agent"
+          }
+        ]
+      },
+      "pluginVersion": "12.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "deoffyxtkywaoa"
+          },
+          "query": "// On définit la plage de temps dans une variable pour plus de clarté\r\ntime_range = -30m\r\n\r\n// --- SOURCE 1 : ANCIEN BUCKET (monitoring) ---\r\nsrc1 = from(bucket: \"monitoring\")\r\n  |> range(start: time_range)\r\n  |> filter(fn: (r) => r[\"_measurement\"] == \"pc\")\r\n  // Intégration de la variable company\r\n  |> filter(fn: (r) => r[\"company\"] =~ /^${company:regex}$/)\r\n  |> filter(fn: (r) =>\r\n    r[\"_field\"] == \"release\" or \r\n    r[\"_field\"] == \"build_number\" or\r\n    r[\"_field\"] == \"anydesk_id\" or \r\n    r[\"_field\"] == \"bytes_recv\" or \r\n    r[\"_field\"] == \"bytes_sent\" or \r\n    r[\"_field\"] == \"cpu_percent\" or \r\n    r[\"_field\"] == \"disk_free\" or \r\n    r[\"_field\"] == \"disk_percent\" or \r\n    r[\"_field\"] == \"disk_total\" or \r\n    r[\"_field\"] == \"memory_percent\" or \r\n    r[\"_field\"] == \"memory_free\" or \r\n    r[\"_field\"] == \"memory_total\" or \r\n    r[\"_field\"] == \"pending_updates\" or \r\n    r[\"_field\"] == \"uptime_minutes\"\r\n  )\r\n  |> last() \r\n  |> map(fn: (r) => ({ r with _value: string(v: r._value) }))\r\n\r\n// --- SOURCE 2 : NOUVEAU BUCKET (BucketMonitoring) ---\r\nsrc2 = from(bucket: \"BucketMonitoring\")\r\n  |> range(start: time_range)\r\n  // Intégration de la variable company ici aussi\r\n  |> filter(fn: (r) => r[\"company\"] =~ /^${company:regex}$/)\r\n  |> filter(fn: (r) =>\r\n    r[\"_field\"] == \"agent_version\" or\r\n    r[\"_field\"] == \"release\" or \r\n    r[\"_field\"] == \"build_number\" or\r\n    r[\"_field\"] == \"anydesk_id\" or \r\n    r[\"_field\"] == \"bytes_recv\" or \r\n    r[\"_field\"] == \"bytes_sent\" or \r\n    r[\"_field\"] == \"cpu_percent\" or \r\n    r[\"_field\"] == \"memory_percent\" or \r\n    r[\"_field\"] == \"memory_free\" or \r\n    r[\"_field\"] == \"memory_total\" or \r\n    r[\"_field\"] == \"pending_updates\" or \r\n    r[\"_field\"] == \"uptime_minutes\" or\r\n    r[\"_field\"] == \"percent\" or \r\n    r[\"_field\"] == \"total\" or\r\n    r[\"_field\"] == \"read_bytes_sec\" or \r\n    r[\"_field\"] == \"write_bytes_sec\"\r\n  )\r\n  |> last() \r\n  |> map(fn: (r) => ({ r with \r\n      _field: \r\n        if r._measurement == \"disk\" then r.mountpoint + \"_\" + r._field \r\n        else if r._measurement == \"diskio\" then r.device + \"_\" + r._field\r\n        else r._field,\r\n      _value: string(v: r._value)\r\n  }))\r\n\r\n// --- FUSION ET NETTOYAGE DES DOUBLONS ---\r\nunion(tables: [src1, src2])\r\n  // On groupe par host et par field pour isoler les doublons de mesures\r\n  |> group(columns: [\"host\", \"company\", \"_field\"])\r\n  // On ne garde que la donnée la plus récente physiquement entre les deux buckets\r\n  |> last() \r\n  \r\n  // --- PIVOT FINAL ---\r\n  // On regroupe par host pour préparer le pivot (une ligne par PC)\r\n  |> group(columns: [\"host\", \"company\"])\r\n  |> pivot(rowKey: [\"host\", \"company\"], columnKey: [\"_field\"], valueColumn: \"_value\")\r\n  |> group()\r\n  |> yield(name: \"final_table\")",
+          "refId": "A"
+        }
+      ],
+      "title": "New panel",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "includeByName": {},
+            "indexByName": {
+              "C_percent": 13,
+              "C_total": 14,
+              "D_percent": 15,
+              "D_total": 16,
+              "E_percent": 21,
+              "E_total": 22,
+              "F_percent": 25,
+              "F_total": 26,
+              "G_percent": 27,
+              "G_total": 28,
+              "agent_version": 2,
+              "anydesk_id": 3,
+              "build_number": 5,
+              "bytes_recv": 11,
+              "bytes_sent": 12,
+              "company": 1,
+              "cpu_percent": 8,
+              "disk0_read_bytes_sec": 17,
+              "disk0_write_bytes_sec": 18,
+              "disk1_read_bytes_sec": 19,
+              "disk1_write_bytes_sec": 20,
+              "disk2_read_bytes_sec": 23,
+              "disk2_write_bytes_sec": 24,
+              "disk3_read_bytes_sec": 29,
+              "disk3_write_bytes_sec": 30,
+              "disk4_read_bytes_sec": 31,
+              "disk4_write_bytes_sec": 32,
+              "disk_free": 34,
+              "disk_percent": 35,
+              "disk_total": 36,
+              "host": 0,
+              "memory_free": 33,
+              "memory_percent": 10,
+              "memory_total": 9,
+              "pending_updates": 7,
+              "release": 4,
+              "uptime_minutes": 6
+            },
+            "renameByName": {
+              "C_percent": "C://",
+              "C_total": "C:// Capacity",
+              "D_percent": "D://",
+              "D_total": "D:// Capacity",
+              "E_percent": "E://",
+              "E_total": "E:// Capacity",
+              "F_percent": "F://",
+              "F_total": "F:// Capacity",
+              "G_percent": "G://",
+              "G_total": "G:// Capacity",
+              "agent_version": "Version Agent",
+              "anydesk_id": "Anydesk",
+              "build_number": "Build number",
+              "bytes_recv": "Download",
+              "bytes_sent": "Upload",
+              "cpu_percent": "CPU",
+              "disk0_read_bytes_sec": "Disk 0 Ecriture",
+              "disk0_write_bytes_sec": "Disk 0 Lecture",
+              "disk1_read_bytes_sec": "Disk 1 Ecriture",
+              "disk1_write_bytes_sec": "Disk 1 Lecture",
+              "disk2_read_bytes_sec": "Disk 2 Ecriture",
+              "disk2_write_bytes_sec": "Disk 2 Lecture",
+              "disk3_read_bytes_sec": "Disk 3 Ecriture",
+              "disk3_write_bytes_sec": "Disk 3 Lecture",
+              "disk4_read_bytes_sec": "Disk 4 Ecriture",
+              "disk4_write_bytes_sec": "Disk 4 Lecture",
+              "disk_percent": "",
+              "memory_percent": "RAM",
+              "memory_total": "RAM Capacity",
+              "pending_updates": "Updates",
+              "uptime_minutes": "Uptime"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    }
+  ],
+  "preload": false,
+  "refresh": "auto",
+  "schemaVersion": 41,
+  "tags": [],
+  "templating": {
+    "list": [
+      {
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "definition": "import \"influxdata/influxdb/schema\"\r\n\r\nv1 = schema.tagValues(bucket: \"BucketMonitoring\", tag: \"company\")\r\nv2 = schema.tagValues(bucket: \"monitoring\", tag: \"company\")\r\n\r\nunion(tables: [v1, v2])\r\n  |> keep(columns: [\"_value\"])\r\n  |> distinct()\r\n  |> sort()",
+        "includeAll": true,
+        "label": "company",
+        "name": "company",
+        "options": [],
+        "query": {
+          "query": "import \"influxdata/influxdb/schema\"\r\n\r\nv1 = schema.tagValues(bucket: \"BucketMonitoring\", tag: \"company\")\r\nv2 = schema.tagValues(bucket: \"monitoring\", tag: \"company\")\r\n\r\nunion(tables: [v1, v2])\r\n  |> keep(columns: [\"_value\"])\r\n  |> distinct()\r\n  |> sort()"
+        },
+        "refresh": 1,
+        "regex": "",
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Tableau Général",
+  "uid": "43cb4335-0db6-4be7-9ff4-cf3e7652570f",
+  "version": 24
+}
